@@ -1,2 +1,5 @@
 #ignore data
 orig_data/
+
+#ignore iCloud files
+*.DS_Store
