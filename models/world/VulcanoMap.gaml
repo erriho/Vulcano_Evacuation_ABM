@@ -10,6 +10,8 @@ global {
     //definition of the environment size from the shapefile. 
     //Note that is possible to define it from several files by using: geometry shape <- envelope(envelope(file1) + envelope(file2) + ...);
     geometry shape <- envelope(island_shp);
+    
+    
     	/* - the operator envelope(...) takes a geometry or spatial entity as input and returns its minimum bounding box (envelope) as a geometry of type rectangle
     	 * - geometry shape <- ...: This assigns the resulting rectangular geometry (the envelope) to a variable named shape of type geometry.
     	*/
@@ -26,6 +28,8 @@ global {
 	    /*create Buildings from: shapefile_buildings
 	    	with: [elementId::int(read('full_id')), elementHeight::int(read('Height')), elementColor::string(read('attrForGam'))] ;
 		*/
+		
+		
     }
 }
     
