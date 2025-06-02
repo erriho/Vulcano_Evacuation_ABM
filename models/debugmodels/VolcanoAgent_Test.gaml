@@ -1,4 +1,20 @@
-model VolcanoAgent
+model VolcanoTest
+
+import "../world/VulcanoMap.gaml"
+
+global{
+	
+    init {	        
+	    create Crater from: lafossa_crater_shp;
+	    
+		create Volcano number: 1{
+			name <- "LaFossa";
+			location <- any_location_in(one_of(Crater)); //location <- {2206.0655580625753,3096.5251492224634};
+			activity_level <- 1;
+			new_activity_level <- 2;
+		}
+	}
+}
 
 species Volcano {
     int activity_level; // 0: dormant, 1: unrest, 2: eruption
@@ -73,5 +89,18 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	aspect default{	
 		draw circle(size) color: rgb(#blue, 0.1);
+	}
+}
+ 
+experiment main type: gui {     
+    output {
+	    display vulcano_map type: 2d{
+	       species Island refresh: false;
+	       species Roads refresh: false;
+	       species Ferry_Route refresh: false;
+	       species Buildings refresh: false; 
+	       species Volcano;
+	       species RoaringSoundEmission;
+	    }
 	}
 }
