@@ -64,20 +64,21 @@ global {
 			speed <- cruising_speed;
 			approach_distance <- 0.003 #km;
 			max_waiting_time <- 3000 #s;
+			capacity <- 1;
 			location <- any_location_in(one_of(ferry_network.edges));
-
+			write ferry_network;
 			loop port over: Port {
 				write port.name;
 				if port.name = "Porto di Milazzo" {
 					hub <- port;
 					hub_location <- port.location;
-					//write hub_location;
+					//target_destination <- port.location;
+					write string(self.hub_location) + "-" + port.location;
 				}
 				if port.name = "Porto di Levante" {
 					target_infrastructure_agent <- port;
-					write self.destination;
-					self.destination <- port.location;
-					write string(self.destination) + "-" + port.location;
+					//self.target_destination <- port.location;
+					//write string(self.target_destination) + "-" + port.location;
 				}
 			}
 		}
@@ -153,6 +154,7 @@ species evacuation_vehicle skills: [moving] {
 	point hub_location;
 	//target variables
 	EvacuationInfrastructure target_infrastructure_agent;
+	point target_destination;
 	//evacuation variables
 	bool evacuation_mode <- false; //TRUE if an evacuation has been ordered
 	bool ready_to_evacuate <- false;
@@ -163,6 +165,7 @@ species evacuation_vehicle skills: [moving] {
 	float boarding_speed;
 	float approach_distance;
 	bool waiting_people_to_board <- false;
+	bool waited_for_too_long <- false;
 	float waiting_time <- 0.0 #s; 
 	float max_waiting_time;
 	//unboarding variables
@@ -183,6 +186,7 @@ species evacuation_vehicle skills: [moving] {
 			should_board <- false;
 			waiting_people_to_board <- false;
 			waiting_time <- 0.0 #s;
+			waited_for_too_long <- true;
 			ask target_infrastructure_agent {self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;}
 		}
 	}
@@ -226,26 +230,33 @@ species ferry parent: evacuation_vehicle {
 			if people_on_board > 0 and ready_to_evacuate = false {
 				if location != hub_location {
 					do goto target: hub_location speed: cruising_speed on: ferry_network;
-					if destination != hub_location {destination <- hub_location;}
+					if target_destination != hub_location {target_destination <- hub_location;}
 				}
 				else {
 					if should_unboard = false {should_unboard <- true;}
 				}
 			}
 			else if people_on_board = 0 and ready_to_evacuate = false {
-				if safe = true {
+				if safe = true and waited_for_too_long = false{
 					ready_to_evacuate <- true;
 					free_to_go <- false;
 				}
-				else {
+				else if safe = false and waited_for_too_long = false{
 					do goto target: hub_location speed: cruising_speed on: ferry_network;
+				}
+				else if waited_for_too_long = true {
+					do goto target: hub_location speed: cruising_speed on: ferry_network;
+					if location = hub_location {
+						ready_to_evacuate <- true;
+					}
+					
 				}
 			}
 			else if people_on_board >= 0 and ready_to_evacuate = true {
 				//TODO: communicate to PC that he is ready to go Vulcano
-				if location != destination and destination != hub_location {
-					do goto target: destination speed: speed on: ferry_network;
-					if location distance_to destination < approach_distance and free_to_go = false {
+				if location != target_destination and target_destination != hub_location {
+					do goto target: target_destination speed: speed on: ferry_network;
+					if location distance_to target_destination < approach_distance and free_to_go = false {
 						//Chiede al porto se è libero
 						speed <- 0.0;
 						ask target_infrastructure_agent {
@@ -257,23 +268,23 @@ species ferry parent: evacuation_vehicle {
 						}
 						if safe = false {ready_to_evacuate <- false;}
 					}
-					if location distance_to destination < approach_distance and free_to_go = true {
+					if location distance_to target_destination < approach_distance and free_to_go = true {
 						speed <- cruising_speed;
 					}
 				}
-				else if location = destination and destination != hub_location {
+				else if location = target_destination and target_destination != hub_location {
 					should_board <- true;
 					speed <- 0.0;
 				}
-				else if destination = hub_location {
+				else if target_destination = hub_location {
 					/*wait for PC to tell where to go, in the meanwhile go to hub*/
-					do goto target: destination speed: speed on: ferry_network;
+					do goto target: target_destination speed: speed on: ferry_network;
 					if location = hub_location {speed <- 0.0;}
 					else {if speed != cruising_speed {speed <- cruising_speed;}}
 				}
 			}
 		}
-		else {do goto target: destination speed: speed on: ferry_network;}
+		else {do goto target: target_destination speed: speed on: ferry_network;}
 	}
 	
 	reflex ferry_safety_check {}
