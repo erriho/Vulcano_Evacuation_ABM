@@ -66,6 +66,14 @@ species EvacuationInfrastructure {
 		else if occupied_evacuation_spots < actual_evacuation_vehicles_capacity {full <- false; color <- std_color;}
 	}
 	
+	action board_people (float boarding_speed, int people_on_board){
+		int max_people_to_board <- round (boarding_speed*step);
+		return people_on_board;
+	}
+	action unboard_people (float boarding_speed, int people_on_board){
+		return people_on_board;
+	}
+	
 	action update_viability_status {
 		if viability = true {
 			actual_evacuation_vehicles_capacity <- max_evacuation_vehicles_capacity;

@@ -14,7 +14,7 @@ global {
     	/* - the operator envelope(...) takes a geometry or spatial entity as input and returns its minimum bounding box (envelope) as a geometry of type rectangle
     	 * - geometry shape <- ...: This assigns the resulting rectangular geometry (the envelope) to a variable named shape of type geometry.
     	*/
-    
+        
     init {
 	    //Creation of Buildings agents from the shapefile (and reading some of the shapefile attributes)
 	        
