@@ -2,6 +2,8 @@ model PortTest
 
 import "../world/VulcanoMap.gaml"
 
+//WARNING: I have not updated the agents code for a while now - Test_PortFerry_Agents is the most up-to-date version
+
 global {
 	
 	string font_name <- "Arial";

@@ -29,20 +29,20 @@ global {
 		create Port from: ports_shp;
 		create Heliport from: heliports_shp;
 		loop port over: Port {
-			loop row_index over: [0,1,2,3] {
+			loop row_index over: range(length(rows_list(ports_data_matrix))-1) {
 				if port.name = string(ports_data_matrix[0, row_index]) {
 					port.max_evacuation_vehicles_capacity <- int(ports_data_matrix[1, row_index]); 
 					port.actual_evacuation_vehicles_capacity <- port.max_evacuation_vehicles_capacity;
 					port.max_people_capacity <- int(ports_data_matrix[2, row_index]);
 					port.actual_people_capacity <- port.max_people_capacity;
-					write port.name + " - " + port.max_evacuation_vehicles_capacity + " - " + port.max_people_capacity + " - " + port.location; 
+					//write port.name + " - " + port.max_evacuation_vehicles_capacity + " - " + port.max_people_capacity + " - " + port.location; 
 				}
 			}
 			if port.name = 'Molo di protezione civile di Gelso' {ask port {do die;}}
 			else if port.name = 'Molo di protezione civile di Ponente' {ask port {do die;}}	
 		}
 		loop heliport over: Heliport {
-			loop row_index over: [0,1,2,3,4] {
+			loop row_index over: range(length(rows_list(heliports_data_matrix))-1) {
 				if heliport.name = string(heliports_data_matrix[0, row_index]) {
 					heliport.max_evacuation_vehicles_capacity <- int(heliports_data_matrix[1, row_index]); 
 					heliport.actual_evacuation_vehicles_capacity <- heliport.max_evacuation_vehicles_capacity;
@@ -62,7 +62,7 @@ global {
 			safe <- true;
 			cruising_speed <- 20 #km/#h;
 			speed <- cruising_speed;
-			approach_distance <- 0.003 #km;
+			approach_distance <- 1 #km;
 			max_waiting_time <- 3000 #s;
 			capacity <- 1;
 			location <- any_location_in(one_of(ferry_network.edges));
@@ -77,7 +77,7 @@ global {
 				}
 				if port.name = "Porto di Levante" {
 					target_infrastructure_agent <- port;
-					//self.target_destination <- port.location;
+					self.target_destination <- port.location;
 					//write string(self.target_destination) + "-" + port.location;
 				}
 			}
@@ -106,7 +106,7 @@ species EvacuationInfrastructure {
 		else if occupied_evacuation_spots < actual_evacuation_vehicles_capacity {full <- false; color <- std_color;}
 	}
 	
-	action board_people (float boarding_speed, int people_on_board){
+	action board_people (float boarding_speed, int people_on_board, agent vehicle){
 		int max_people_to_board <- round (boarding_speed*step);
 		return people_on_board;
 	}
@@ -194,7 +194,7 @@ species evacuation_vehicle skills: [moving] {
 	reflex boarding when: should_board = true {
 		if waiting_people_to_board = false {waiting_people_to_board <- true;}
 		ask target_infrastructure_agent {
-			myself.people_on_board <- int(board_people(myself.boarding_speed, myself.people_on_board));
+			myself.people_on_board <- int(board_people(myself.boarding_speed, myself.people_on_board, myself));
 		}
 		if people_on_board = capacity {
 			write self.name + " - Boarding complete.";
@@ -209,7 +209,7 @@ species evacuation_vehicle skills: [moving] {
 	
 	reflex unboarding when: should_unboard = true{
 		ask target_infrastructure_agent {
-			myself.people_on_board <- int(unboard_people(myself.boarding_speed, myself.people_on_board));
+			myself.people_on_board <- int(unboard_people(myself.unboarding_speed, myself.people_on_board));
 		}
 		if people_on_board = 0 {
 			write self.name + " - Unboarding complete.";
