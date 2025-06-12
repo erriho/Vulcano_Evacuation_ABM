@@ -1,12 +1,7 @@
-/**
-* Name: sociallinks
-* Based on the internal empty template. 
-* Author: irenesilvestro
-* Tags: 
-*/
 
 
-model sociallinks
+
+model human
 
 /* Insert your model definition here */
 
@@ -21,11 +16,7 @@ global {
 	file road_shp <- file("../../includes/Shapefiles/Roads/Vulcano_Roads.shp");
 	file Milazzo_route_shp <- file("../../includes/Shapefiles/Ferry_Routes/Vulcano_Milazzo.shp");
 	
-    //file island_shp <- file("/Users/irenesilvestro/Desktop/quinto anno uni/econofisica/Vulcano_Evacuation_ABM/includes/Shapefiles/Island/Vulcano_Island.shp");
-    
-	//file island_shp <- file("../includes/Shapefiles/Island/Vulcano_Island.shp");
-	//file road_shp <- file("/Users/irenesilvestro/Desktop/quinto anno uni/econofisica/Vulcano_Evacuation_ABM/includes/Shapefiles/Roads/Vulcano_Roads.shp");
-	//file Milazzo_route_shp <- file("/Users/irenesilvestro/Desktop/quinto anno uni/econofisica/Vulcano_Evacuation_ABM/includes/Shapefiles/Ferry_Routes/Vulcano_Milazzo.shp");
+
  	/* file shapefile_buildings <- file("../includes/Shapefiles/Buildings/Vulcano_Buildings.shp"); */
 
     //definition of the environment size from the shapefile. 
