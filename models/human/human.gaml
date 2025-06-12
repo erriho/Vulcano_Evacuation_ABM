@@ -13,8 +13,9 @@ global {
     
     
 	file island_shp <- file("../../includes/Shapefiles/Island/Vulcano_Island.shp");
-	file road_shp <- file("../../includes/Shapefiles/Roads/Vulcano_Roads.shp");
+	file road_shp <- file("../../includes/Shapefiles/Roads/Vulcano_Roads_and_Paths_United_Cleaned.shp");
 	file Milazzo_route_shp <- file("../../includes/Shapefiles/Ferry_Routes/Vulcano_Milazzo.shp");
+	file buildings_shp <- file("../../includes/Shapefiles/Buildings/Vulcano_Buildings.shp");
 	
 
  	/* file shapefile_buildings <- file("../includes/Shapefiles/Buildings/Vulcano_Buildings.shp"); */
@@ -37,13 +38,14 @@ global {
     	*/
     
     init {
-	    //Creation of Buildings agents from the shapefile (and reading some of the shapefile attributes)
 	        
 	    create Island from: island_shp;
 	    	
 	    create Roads from: road_shp where (each != nil);
 	    
 	    create Ferry_Route from: Milazzo_route_shp where (each != nil);
+	    
+	    create Buildings from: buildings_shp;
 	    
 	    create hazard number: 1 {
 			location <- any_location_in(one_of(Roads)); // o un punto fisso se vuoi
@@ -190,12 +192,13 @@ species Ferry_Route {
 }
 
 species Buildings {
-    int elementId;
+    /*int elementId;
     int elementHeight;
-    string elementColor;
+    string elementColor;*/
     
     aspect default{
-    draw shape color: (elementColor = "blue") ? #blue : ( (elementColor = "red") ? #red : #yellow) depth: elementHeight;
+    /*draw shape color: (elementColor = "blue") ? #blue : ( (elementColor = "red") ? #red : #yellow) depth: elementHeight;*/
+    draw shape color: rgb(53, 53, 53);
     }
 }
 
@@ -392,6 +395,7 @@ experiment show_map type: gui {
 	       species Island refresh: false;
 	       species Roads refresh: false;
 	       species Ferry_Route refresh: false; 
+	       species Buildings refresh: false;
 	       species people;
 	       species hazard;
 	       species catastrophe;

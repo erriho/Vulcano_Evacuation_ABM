@@ -1,0 +1,34 @@
+Voglio fare un eruption engine. 
+Questo è un reflex che ha il compito di attivare i vari reflex corrispondenti alle singole attività vulcaniche.  
+Quello che puoi fare è fare in modo che attivi i reflex usando variabili booleane salvate in una mappa, strutturata come:
+(la sto pensando come un dizionario su python, solo perché sono più abituato)
+map = {
+	'eruption_type': '0',
+	'eruption_phenomenon_1': {
+		'intensity': ,
+		'any_other_param':
+	}
+	'eruption_phenomenon_2': {
+		'intensity': ,
+		'any_other_param':
+	}
+}
+Idealmente questa mappa è caricabile da file, cosa che viene fatta dal reflex della prossima riga.
+Quindi abbiamo un reflex di inializzazione che controlla che ci sia,
+reflex when: correct_initialization = false {
+	if map = nil {
+		if eruption_type in ['0','1','1b',...]{
+			string load_path <- "../includes/json/erutpion" + eruption_type + ".json"
+			//TODO: learn how to load from .json files
+		}
+		write "Loaded eruption_parameters_map from load_path"}
+	}
+	else{write "}
+	correct_initialization <- true;
+} 
+A questo punto serve creare un manager, che salvi tutte le variabili dell'attività eruttiva e la gestisca opportunamente.
+
+Quindi l'engine sarebbe composto da:
+- initializer
+- manager
+- effettiva attività vulcanica
