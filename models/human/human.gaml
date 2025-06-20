@@ -27,7 +27,7 @@ global {
     
     float hazard_distance <- 400.0; //distanza alla quale un agente puo percepire il pericolo 
 	float catastrophe_distance <- 100.0; //distanza alla quale agente puo percepire la catastrofe 
-	float proba_detect_hazard <- 0.2; //probabilità che agente rilevi il pericolo 
+	float proba_detect_hazard <- 0.7; //probabilità che agente rilevi il pericolo 
 	float proba_detect_other_escape <- 0.01; //prob che agente rilevi un'altra fuga di emergenza 
 	float other_distance <- 10.0; //distanza  a cui l'agente puo percepire le altre persone 
 	point shared_target;
@@ -83,7 +83,7 @@ global {
 	    	with: [elementId::int(read('full_id')), elementHeight::int(read('Height')), elementColor::string(read('attrForGam'))] ;
 		*/
 
-    	create people number: 200 {
+    	create people number: 50 {
     	
      
 			location <- any_location_in(one_of(Roads));
@@ -92,10 +92,10 @@ global {
 			//la priorità di quella sopra non sembrerebbe esser fissata
 			
 			
-			target <- one_of(shelter).location;
+			//target <- one_of(shelter).location;
 			//target <- shared_target;
       		//target <- any_location_in(one_of(Roads)); // inizializzazione diretta del target
-	
+			
     	}
     	
     	
@@ -151,6 +151,13 @@ global {
 	reflex stop_sim when: empty(people) {
 		do pause;
 	}
+	
+	/* 
+	reflex print when: add_emotion(fearConfirmed) {
+		write "yee";
+	}
+	* 
+	*/
     
 }
     
@@ -206,10 +213,12 @@ species Buildings {
 
 species people skills: [moving] control: simple_bdi{
 	point target;
-	float speed <- 100 #km/#h; //velocita iniziale
+	float speed <- 30 #km/#h; //velocita iniziale
 	rgb color <- #blue;
 	bool escape_mode <- false; //attivo se l'agente sta scappamdo 
-	bool fearful; //vero se l'agente reagisce con paura 
+	bool elimination <- false; 
+	bool fearful <- true; //vero se l'agente reagisce con paura 
+	bool fearful2 <- false;
 	
 	float view_dist<-30.0;
 	
@@ -222,19 +231,25 @@ species people skills: [moving] control: simple_bdi{
 	predicate in_shelter <- new_predicate("shelter");
 	predicate has_target <- new_predicate("has target");
 	predicate has_shelter <- new_predicate("has shelter");
+	predicate share_information <- new_predicate("share information") ;
+	
 	
 	//we give them as well 2 beliefs as variables
     //due credenze ocme predicati catastrofe o non catastrofe
     //che poi dovrebbe essere un uncertainty 
 	predicate catastropheP <- new_predicate("catastrophe");
 	predicate nonCatastrophe <- new_predicate("catastrophe",false);
-	
+	predicate hazardP <- new_predicate("hazard");
 
 	//at last we define 2 emotion linked to the knowledge of the catastrophe
-	emotion fearConfirmed <- new_emotion("fear_confirmed",catastropheP);
+	//emotion fearConfirmed <- new_emotion("fear_confirmed",catastropheP);
+	
+	emotion fearConfirmed <- new_emotion("fear_confirmed");
 	//attenzione fear_comfirmed è una emozione effettivametne 
 	//vedi che accando alle emozion ici mette la credenza a cui sono associate
-	emotion fear <- new_emotion("fear",catastropheP); //all'emozione ci collega una credenza!!
+	emotion fear <- new_emotion("fear",hazardP); //all'emozione ci collega una credenza!!
+	//emotion fear <- nil; //all'emozione ci collega una credenza!!
+	
 	
 	bool noTarget<-true; //serve a controllare se il target è impostato che comunque è regolato in normal_move
 	
@@ -244,6 +259,29 @@ species people skills: [moving] control: simple_bdi{
   //if the agent perceive that their is something that is not normal (a hazard), it has a probability proba_detect_hazard to suppose (add to its unertainty base) that there is a catastrophe occuring
 	//quindi quello che percepisce è hazard e non catastrofe e poi non una certa probabilita aggiunge al suo knowledge base la info , mi sa sotto forma di uncertainty 
 	perceive target:hazard in: hazard_distance when: not escape_mode and flip(proba_detect_hazard){
+	//perceive target:hazard in: hazard_distance {
+		//quindi percepisce hazard quando non è in modalita scappo e estrae anche una prob per capire se vera incamerata nel knowledge base 
+		focus id:"hazard" ;//mette il uncertainty a vero attenzione è incertezza , potrebbe esserci una catastrofe 
+		//poi se è nella modalità fearful allora entra nella modalita fuga che è quella dove si switcha anche il valore di escape_mode 
+		ask myself {
+			if(fearful){
+				do add_desire(predicate:share_information, strength: 5.0);
+				do to_escape_mode;
+				write self.name + " fear from hazard"; //perche si dovrebbe essere attivata l'emozione con quella credeza
+			}else{
+				color<-#green;
+				do add_desire(predicate:share_information, strength: 5.0);
+				//si mette in un colore verde  perche comunque ha percepito pericolo ma non ha paura 
+			}
+		}
+	}
+	//if the agent perceive the catastrophe, it adds a belief about it and pass in escape mode
+	//attenzione percezione della catastrofe che avviene sempre se nel cerchio senza una condizione 
+	//qunado percepisce la catastrofe attiva subito la modatita escape_mode 
+	//quindi percepire la catastrofe è piu potente di hazard
+	
+	/*
+	 	perceive target:hazard in: hazard_distance when: not escape_mode and flip(proba_detect_hazard){
 		//quindi percepisce hazard quando non è in modalita scappo e estrae anche una prob per capire se vera incamerata nel knowledge base 
 		focus id:"catastrophe" is_uncertain: true; //mette il uncertainty a vero attenzione è incertezza , potrebbe esserci una catastrofe 
 		//poi se è nella modalità fearful allora entra nella modalita fuga che è quella dove si switcha anche il valore di escape_mode 
@@ -255,11 +293,9 @@ species people skills: [moving] control: simple_bdi{
 				//si mette in un colore verde  perche comunque ha percepito pericolo ma non ha paura 
 			}
 		}
-	}
-	//if the agent perceive the catastrophe, it adds a belief about it and pass in escape mode
-	//attenzione percezione della catastrofe che avviene sempre se nel cerchio senza una condizione 
-	//qunado percepisce la catastrofe attiva subito la modatita escape_mode 
-	//quindi percepire la catastrofe è piu potente di hazard
+	} */
+	
+	/* 
 	perceive target:catastrophe in:catastrophe_distance{
 		focus id:"catastrophe"; //qui a differenza di prima sta aggiungendo un belief con prob 1 
 		ask myself{
@@ -268,19 +304,42 @@ species people skills: [moving] control: simple_bdi{
 			}
 		}
 	}
+	* 
+	*/
+	
+	perceive target:catastrophe in:catastrophe_distance{
+		focus id:"catastrophe"; //qui a differenza di prima sta aggiungendo un belief con prob 1 
+		ask myself{
+			if(not elimination){
+				do die;
+				//do to_elimination;
+			}
+		}
+	}
 	
 
 	//CONTAGIO EMOTIVO 
 	//if the agent perceives other people agents in their neighborhood that have fear, it can be contaminate by this emotion
 	//containati quando percepiscono altre persone nel cerchio e non sono in escape_mode 
-	perceive target:people in: other_distance when: not escape_mode {
+	perceive target:people in: other_distance {
 		//agente prcepito ha fearConfirmed, quando lui ha fear allora acquisisce fearConfirmed
-		emotional_contagion emotion_detected:fearConfirmed when: fearful;
+		//emotional_contagion emotion_detected:fearConfirmed when: fearful;
 		//io non ho paura ma l'agente percepito ha un certo charisma e io ho una certa receptivity, simula il contagio della paura semplice 
 		//dovrebe essere automatico
-		emotional_contagion emotion_detected:new_emotion("fear") charisma: charisma receptivity:receptivity;
+		//emotional_contagion emotion_detected:new_emotion("fear") charisma: charisma receptivity:receptivity;
 		//agente percepisce fearConfirmed , ma sviluppa solo fear (non era gia impaurito)
-		emotional_contagion emotion_detected:fearConfirmed emotion_created:fear;
+		//emotional_contagion emotion_detected:fearConfirmed emotion_created:fear;
+		
+		emotional_contagion emotion_detected:fear emotion_created:fearConfirmed when: fearful;
+		
+		ask myself{
+			write "i";
+		}
+		
+		if (has_emotion(fear)) {
+				write self.name + " is joyous";
+			}
+		
 	}
 	//la formula del contagio con carisma e recettivita dovrebbe esserci in ben 
 	
@@ -291,7 +350,13 @@ species people skills: [moving] control: simple_bdi{
 	perceive target:people in: other_distance{
 		emotional_contagion emotion_detected: joy;
 		//ATTENZIONE si tenta un contagio su emozione joy ma non produce effetto perche è nil pero è pronto per estensioni future 
-		emotional_contagion emotion_detected:fearConfirmed emotion_created:fear;
+		//emotional_contagion emotion_detected:fearConfirmed emotion_created:fear;
+		ask myself {
+			if (has_emotion(fear)) {
+				write self.name + " fear from contagion 2";
+				}
+				
+				}
 	}
 	
 	
@@ -305,25 +370,121 @@ species people skills: [moving] control: simple_bdi{
 	rule emotion:fearConfirmed remove_intention: at_target new_desire:in_shelter strength:5.0;
 	
 	//if the agent has the belief that there is a a catastrophe,  it has the desire to go to a shelter
-	rule belief:new_predicate("catastrophe") remove_intention:at_target new_desire:in_shelter strength:5.0;
+	rule belief:new_predicate("hazard") remove_intention:at_target new_desire:in_shelter strength:5.0;
 	
-	rule emotion:new_emotion("fear" ,new_predicate("catastrophe")) new_desire:in_shelter remove_intention:at_target when: fearful strength:5.0;
+	rule emotion:new_emotion("fear" ,new_predicate("hazard")) new_desire:in_shelter remove_intention:at_target when: fearful strength:5.0;
+	
+	//rule emotion:new_emotion("fear" ,new_predicate("catastrophe")) new_desire:in_shelter remove_intention:at_target when: fearful strength:5.0;
 	
 	
 	
 	//bool noTarget<-true; //serve a controllare se il target è impostato che comunque è regolato in normal_move
 	
-	plan lets_wander intention: at_target {
-		do wander on: road_network ;
-	}
+
+	
 	
 		action to_escape_mode {
 		escape_mode <- true;
-		color <- #darkred;
+		//color <- #darkred;
 		target <- nil;	
 		noTarget <- true;
 		do remove_intention(at_target, true);
 	}
+	
+	
+	
+		action to_elimination {
+		
+		elimination <- true;
+		do die;
+	}
+	
+	
+	
+	plan lets_wander intention: at_target {
+		do wander on: road_network ;
+	}
+/* 
+	plan normal_move intention: at_target  {
+		if (target = nil) {
+			target <- any_location_in(one_of(Roads));
+		} else {
+			do goto target: target on: road_network  recompute_path: false;
+			if (target = location)  {
+				target <- nil;
+				noTarget<-true;
+			}
+		}
+	}
+	* 
+	*/
+	
+	
+	
+	
+	plan evacuation intention: in_shelter {
+		
+		color <-#darkred;
+		if (target = nil or noTarget) {
+			target <- (shelter with_min_of (each.location distance_to location)).location;
+			noTarget <- false;
+		}
+		else  {
+			do goto target: target on: road_network  recompute_path: true;
+			if (target = location)  {
+				do die;
+			}		
+		}
+	}
+	
+	/*
+	plan evacuation intention: in_shelter finished_when: has_emotion(fear){
+		color <-#darkred;
+		if (target = nil or noTarget) {
+			target <- (shelter with_min_of (each.location distance_to location)).location;
+			noTarget <- false;
+		}
+		else  {
+			do goto target: target on: road_network  recompute_path: false;
+			if (target = location)  {
+				do die;
+			}		
+		}
+	}
+	 
+	plan evacuationFast intention: in_shelter emotion: fearConfirmed priority:2 {
+		color <- #yellow;
+		speed <- 60 #km/#h;
+		if (target = nil or noTarget) {
+			target <- (shelter with_min_of (each.location distance_to location)).location;
+			noTarget <- false;
+		}
+		else  {
+			do goto target: target on: road_network recompute_path: false;
+			if (target = location)  {
+				do die;
+			}		
+		}
+	}	
+*/
+
+
+//se ho hazard dico a tutti quelli che precedentemente ho incontrato che c'è il pericolo (in qualche modo implicito)
+//l'intention di share information si attiva con una certa forza in ogni caso qunado io percepisco hazard sia che io sia spaventato che no
+	plan share_information_to_friends intention: share_information instantaneous: true {
+		list<people> my_friends <- list<people>((social_link_base where (each.liking > 0)) collect each.agent);
+		loop known_hazard over: get_beliefs_with_name("hazard") {
+			ask my_friends {
+				do add_directly_belief(known_hazard);
+				write self.name + " comunicated hazard to :"  ;
+			}
+		}
+		
+		do remove_intention(share_information, true); 
+	}
+	
+	
+	
 	
 	
 	aspect default {
@@ -342,7 +503,7 @@ species hazard {
 
 
     reflex expand {
-        hazard_distance <- hazard_distance + 10.0; // espansione graduale ogni tick
+        hazard_distance <- hazard_distance + 1.0; // espansione graduale ogni tick
     }
 
     aspect default {
@@ -358,7 +519,7 @@ species catastrophe{
 	}
 	
     reflex expand {
-        catastrophe_distance <- catastrophe_distance + 2.0; // espansione graduale ogni tick
+        catastrophe_distance <- catastrophe_distance + 0.2; // espansione graduale ogni tick
     }
 	aspect default{
 		draw circle(catastrophe_distance) color: rgb(#gamared,0.4) border:#gamared depth:10;
@@ -368,9 +529,12 @@ species catastrophe{
 
  
 species shelter {
+	
+	int arrived_people <- 0; // nuovo contatore
 	aspect default {
 		draw circle(30) color: rgb(#gamablue,0.8) border: #gamablue depth:10;
-	}
+		
+		}
 }
 
 
