@@ -105,7 +105,7 @@ species RoaringSoundEmissionManager parent: EruptivePhenomenonManager{
 	//phenomenon variables 
 	float speed_of_sound;
 	float max_duration;
-	list intensity_distribution;
+	list<float> intensity_distribution;
 	
 	reflex pause when: time_waited < waiting_time{
 		time_waited <- time_waited + step;
