@@ -19,6 +19,7 @@ global{
 			name <- "LaFossa";
 			location <- any_location_in(one_of(Crater)); //location <- {2206.0655580625753,3096.5251492224634};
 			activity_level <- 1;
+			eruption_type <- "test";
 			new_activity_level <- 2;
 			eruption_engine_params_map <- glob_eruption_engine_params_map;
 		}
@@ -68,6 +69,7 @@ species Volcano {
 				else {self.lambda <- 180.0;}
     		}
     	}
+    	else {if RoaringSoundEmissionManager != nil or RoaringSoundEmissionManager != [] {ask RoaringSoundEmissionManager {do die;}}}    	
 		correct_initialization <- true;
 		write "Initialization completed.";
     }

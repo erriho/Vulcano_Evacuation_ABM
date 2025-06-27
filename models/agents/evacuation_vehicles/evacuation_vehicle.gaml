@@ -33,6 +33,7 @@ species evacuation_vehicle skills: [moving] {
 	//other vehichle characteristics
 	int capacity; //the vehicle capacity
 	int people_on_board; //it reflects how many people are on board
+	list<agent> people_on_board_list;
 	float cruising_speed;	
 	
 	reflex waiting when: waiting_people_to_board = true{
@@ -53,7 +54,7 @@ species evacuation_vehicle skills: [moving] {
 	reflex boarding when: should_board = true {
 		if waiting_people_to_board = false {waiting_people_to_board <- true;}
 		ask target_infrastructure_agent {
-			myself.people_on_board <- int(board_people(myself.boarding_speed, myself.people_on_board));
+			myself.people_on_board <- int(board_people(myself.boarding_speed, myself.people_on_board, myself.people_on_board_list));
 		}
 		if people_on_board = capacity {
 			write self.name + " - Boarding complete.";
@@ -68,7 +69,7 @@ species evacuation_vehicle skills: [moving] {
 	
 	reflex unboarding when: should_unboard = true{
 		ask target_infrastructure_agent {
-			myself.people_on_board <- int(unboard_people(myself.boarding_speed, myself.people_on_board));
+			myself.people_on_board <- int(unboard_people(myself.boarding_speed, myself.people_on_board_list));
 		}
 		if people_on_board = 0 {
 			write self.name + " - Unboarding complete.";

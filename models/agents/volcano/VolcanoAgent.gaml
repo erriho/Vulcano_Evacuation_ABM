@@ -43,6 +43,7 @@ species Volcano {
 				else {self.lambda <- 180.0;}
     		}
     	}
+    	else {if RoaringSoundEmissionManager != nil or RoaringSoundEmissionManager != [] {ask RoaringSoundEmissionManager {do die;}}}
 		correct_initialization <- true;
 		write "Initialization completed.";
     }
@@ -146,9 +147,12 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	int intensity;
 	float size <- 0.0 #m;
 	float speed_of_sound;
-	list intensity_distribution;
+	list<float> intensity_distribution;
+	list<agent> unexposed_people;
+	string exposition_model <- "proportional";
 	
 	reflex initialize when: should_initialize = true {
+		unexposed_people <- agents of_species(species(people));
 		size <- 0.0;
 		intensity <- rnd_choice(intensity_distribution);
 		write "Boom!" + " - Intensity: " + string(intensity);
@@ -156,6 +160,17 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	
 	reflex execute {
+		if empty(unexposed_people) = false {
+			loop person over: unexposed_people{
+				if self distance_to person <= self.size {
+					if exposition_model = "prop" {
+						
+					}
+					//can expand to other exposition models
+					remove item: person from: unexposed_people;
+				}		
+			}
+		}
 		do update_duration;
 		size <- size + speed_of_sound * step;
 	}
@@ -164,3 +179,5 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		draw circle(size) color: rgb(#blue, 0.1);
 	}
 }
+
+species people {}

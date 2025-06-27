@@ -37,6 +37,10 @@ species EvacuationInfrastructure {
 		int boarded_people <- 0;
 		bool boarding_successful <- false;
 		int max_nb_of_people_to_board <- round(boarding_speed*step);
+		if max_nb_of_people_to_board < 1 {max_nb_of_people_to_board <- rnd_choice([(1-boarding_speed*step),boarding_speed*step]);}
+		/* If the number of people to board in a simulation step is less than 0.5 (meaning it would round down to zero), we don't just stop. 
+		 * Instead, we board one person with a probability equal to that fractional value. This ensures continuous progression even with small boarding numbers.
+		 */
 		if empty(people_waiting_list) = false {
 			loop person over: people_waiting_list {
 				boarding_successful <- false;
@@ -65,6 +69,7 @@ species EvacuationInfrastructure {
 	action unboard_people (float unboarding_speed, int people_on_board, list<agent> people_on_board_list){
 		int unboarded_people <- 0;
 		int max_nb_of_people_to_unboard <- round(unboarding_speed*step);
+		if max_nb_of_people_to_unboard < 1 {max_nb_of_people_to_unboard <- rnd_choice([(1-unboarding_speed*step),unboarding_speed*step]);}
 		loop person over: people_on_board_list {
 			//TODO: update a global varable containg the number of evacuees
 			remove item: person from: people_waiting_list;

@@ -6,7 +6,8 @@ global {
 
 	file island_shp <- file("../../includes/Shapefiles/Island/Vulcano_Island.shp");
 	file roads_shp <- file("../../includes/Shapefiles/Roads/Vulcano_Roads_and_Paths_United_Cleaned.shp");
-	file Milazzo_route_shp <- file("../../includes/Shapefiles/Ferry_Routes/Vulcano_Milazzo.shp");
+	//file Milazzo_route_shp <- file("../../includes/Shapefiles/Ferry_Routes/Vulcano_Milazzo.shp");
+ 	file Milazzo_route_shp <- file("../../includes/Shapefiles/Ferry_Routes/FerryRoutes2.shp");
  	file buildings_shp <- file("../../includes/Shapefiles/Buildings/Vulcano_Buildings.shp");
  	file lafossa_crater_shp <- file("../../includes/Shapefiles/Craters/LaFossaCrater.shp");
     geometry shape <- envelope(island_shp);
@@ -38,8 +39,8 @@ global {
 					//write port.name + " - " + port.max_evacuation_vehicles_capacity + " - " + port.max_people_capacity + " - " + port.location; 
 				}
 			}
-			if port.name = 'Molo di protezione civile di Gelso' {ask port {do die;}}
-			else if port.name = 'Molo di protezione civile di Ponente' {ask port {do die;}}	
+			//if port.name = 'Molo di protezione civile di Gelso' {ask port {do die;}}
+			//else if port.name = 'Molo di protezione civile di Ponente' {ask port {do die;}}	
 		}
 		loop heliport over: Heliport {
 			loop row_index over: range(length(rows_list(heliports_data_matrix))-1) {
@@ -64,6 +65,7 @@ global {
 			speed <- cruising_speed;
 			approach_distance <- 1 #km;
 			max_waiting_time <- 3000 #s;
+			//people_on_board <- 1;
 			capacity <- 1;
 			location <- any_location_in(one_of(ferry_network.edges));
 			write ferry_network;
@@ -86,16 +88,18 @@ global {
 }
 
 species EvacuationInfrastructure {
-	int occupied_evacuation_spots <- 0;
-	int actual_evacuation_vehicles_capacity;
+	//fixed infrustructure characteristics
 	int max_evacuation_vehicles_capacity;
-	int people_waiting;
-	int actual_people_capacity;
 	int max_people_capacity;
-	float occupancy;
+	//dynamic infrustructure characteristics
+	int actual_evacuation_vehicles_capacity; //in case the infrastructure suffers a reductions in functionality
+	int actual_people_capacity;
+	int occupied_evacuation_spots; 
+	int people_waiting_nb;
+	list<agent> people_waiting_list;
 	bool full <- false;
 	bool viability <- true;
-	//aspect
+	//aspect customization
 	rgb color;
 	rgb std_color;
 	rgb full_color <- #red;
@@ -106,11 +110,60 @@ species EvacuationInfrastructure {
 		else if occupied_evacuation_spots < actual_evacuation_vehicles_capacity {full <- false; color <- std_color;}
 	}
 	
-	action board_people (float boarding_speed, int people_on_board, agent vehicle){
-		int max_people_to_board <- round (boarding_speed*step);
+	action board_people (float boarding_speed, int people_on_board, agent vehicle, list people_on_board_list){
+		/*
+		 * OVERVIEW:
+		 * The agent Infrastructure is given by the agent Vehicle its boarding speed and the nb of people that are currently on board.
+		 * These are used to compute how many people (at maximum) can be boarded in the simulation step.
+		 * So, the Infrastructure takes up to the max # of people out of the elemnts in the list people_waiting_list.
+		 * It asks each of them if they want to board, if so boarded_people gets increased, the people location is set to mirror the vehicle's one, and their evacuation status is updated. 
+		 * 
+		 */
+		int boarded_people <- 0;
+		bool boarding_successful <- false;
+		int max_nb_of_people_to_board <- round(boarding_speed*step);
+		if max_nb_of_people_to_board < 1 {max_nb_of_people_to_board <- rnd_choice([(1-boarding_speed*step),boarding_speed*step]);}
+		/* If the number of people to board in a simulation step is less than 0.5 (meaning it would round down to zero), we don't just stop. 
+		 * Instead, we board one person with a probability equal to that fractional value. This ensures continuous progression even with small boarding numbers.
+		 */
+		if empty(people_waiting_list) = false {
+			loop person over: people_waiting_list {
+				boarding_successful <- false;
+				ask person {
+					/* person chooses whether to board*/
+					//boarding_successful <- choose_whether_to_board();
+					boarding_successful <- true;
+				}
+				if boarding_successful = true {
+					remove item: person from: people_waiting_list; 
+					add item: person to: people_on_board_list;
+					ask person {
+						//self.vehicle_boarded <- vehicle; 
+						//self.boarded <- true; //this will activate a reflex in the person agent that make it follow the vehicle
+					}
+					boarded_people <- boarded_people + 1;
+				}				
+				if boarded_people = max_nb_of_people_to_board {break;}
+				if empty(people_waiting_list) = true {break;}
+			}
+		}
+		people_on_board <- people_on_board + boarded_people;
 		return people_on_board;
 	}
-	action unboard_people (float boarding_speed, int people_on_board){
+	
+	action unboard_people (float unboarding_speed, int people_on_board, list<agent> people_on_board_list){
+		int unboarded_people <- 0;
+		int max_nb_of_people_to_unboard <- round(unboarding_speed*step);
+		if max_nb_of_people_to_unboard < 1 {max_nb_of_people_to_unboard <- rnd_choice([(1-unboarding_speed*step),unboarding_speed*step]);}
+		loop person over: people_on_board_list {
+			//TODO: update a global varable containg the number of evacuees
+			remove item: person from: people_waiting_list;
+			ask person {do die;}
+			unboarded_people <- unboarded_people + 1;
+			if unboarded_people = max_nb_of_people_to_unboard {break;}
+			if empty(people_waiting_list) = true {break;}
+		}
+		people_on_board <- people_on_board - unboarded_people;
 		return people_on_board;
 	}
 	
@@ -134,7 +187,7 @@ species Port parent: EvacuationInfrastructure {
 	
 	aspect default {
 		draw circle(20) color: rgb(color, 0.9);
-		if self.name != "Porto di Milazzo" {draw string(string(people_waiting) + "/" + string(actual_people_capacity)) font: font(font_name, 5) color: color;}
+		if self.name != "Porto di Milazzo" {draw string(string(people_waiting_nb) + "/" + string(actual_people_capacity)) font: font(font_name, 5) color: color;}
 	}
 }
 
@@ -174,6 +227,7 @@ species evacuation_vehicle skills: [moving] {
 	//other vehichle characteristics
 	int capacity; //the vehicle capacity
 	int people_on_board; //it reflects how many people are on board
+	list <agent> people_on_board_list;
 	float cruising_speed;	
 	
 	reflex waiting when: waiting_people_to_board = true{
@@ -194,7 +248,7 @@ species evacuation_vehicle skills: [moving] {
 	reflex boarding when: should_board = true {
 		if waiting_people_to_board = false {waiting_people_to_board <- true;}
 		ask target_infrastructure_agent {
-			myself.people_on_board <- int(board_people(myself.boarding_speed, myself.people_on_board, myself));
+			myself.people_on_board <- int(board_people(myself.boarding_speed, myself.people_on_board, myself, myself.people_on_board_list));
 		}
 		if people_on_board = capacity {
 			write self.name + " - Boarding complete.";
@@ -209,7 +263,7 @@ species evacuation_vehicle skills: [moving] {
 	
 	reflex unboarding when: should_unboard = true{
 		ask target_infrastructure_agent {
-			myself.people_on_board <- int(unboard_people(myself.unboarding_speed, myself.people_on_board));
+			myself.people_on_board <- int(unboard_people(myself.unboarding_speed, myself.people_on_board, myself.people_on_board_list));
 		}
 		if people_on_board = 0 {
 			write self.name + " - Unboarding complete.";
