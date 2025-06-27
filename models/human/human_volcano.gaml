@@ -373,6 +373,12 @@ species people skills: [moving] control: simple_bdi{
 	bool elimination <- false; 
 	bool fearful <- true; //vero se l'agente reagisce con paura 
 	bool fearful2 <- false;
+	bool in_Waiting_Area <- false;
+	list decision_ferry_distribution <- [0.01, 0.99];
+	bool decided_to_board;
+	evacuation_vehicle boarded_vehicle;
+	bool boarded <- false;
+	int boom_intensity;
 	
 	float view_dist<-30.0;
 	
@@ -515,6 +521,20 @@ species people skills: [moving] control: simple_bdi{
 	
 	
 	
+		action decision_to_board {
+			
+			decided_to_board <-  flip(0.99);
+			
+	}
+	
+	reflex on_board when: boarded = true { 
+		speed <- boarded_vehicle.speed; 
+		location <- boarded_vehicle.location; 
+		
+	}
+	
+	
+	
 		action to_elimination {
 		
 		elimination <- true;
@@ -540,10 +560,16 @@ species people skills: [moving] control: simple_bdi{
 		else  {
 			do goto target: target on: road_network  recompute_path: true;
 			if (target = location)  {
-				do die;
+				//do die;
+				in_Waiting_Area <- true;
+				ask EvacuationInfrastructure closest_to(self){
+					add item: myself to: people_waiting_list;
+			}
+				
 			}		
 		}
 	}
+	
 	
 
 //se ho hazard dico a tutti quelli che precedentemente ho incontrato che c'è il pericolo (in qualche modo implicito)
@@ -559,6 +585,7 @@ species people skills: [moving] control: simple_bdi{
 		
 		do remove_intention(share_information, true); 
 	}
+	
 	
 	
 	
@@ -602,6 +629,108 @@ species socialLinkRepresentation{
 		draw line([origin,destination],50.0) color: color;
 	}
 }
+
+
+species evacuation_vehicle skills: [moving] {
+	
+}
+
+
+
+species EvacuationInfrastructure {
+	//fixed infrustructure characteristics
+	int max_evacuation_vehicles_capacity;
+	int max_people_capacity;
+	//dynamic infrustructure characteristics
+	int actual_evacuation_vehicles_capacity; //in case the infrastructure suffers a reductions in functionality
+	int actual_people_capacity;
+	int occupied_evacuation_spots; 
+	int people_waiting_nb;
+	list<agent> people_waiting_list;
+	bool full <- false;
+	bool viability <- true;
+	//aspect customization
+	rgb color;
+	rgb std_color;
+	rgb full_color <- #red;
+	rgb unviable_color <- #black;
+	
+	reflex check_occupancy {
+		if occupied_evacuation_spots >= actual_evacuation_vehicles_capacity {full <- true; color <- full_color;}
+		else if occupied_evacuation_spots < actual_evacuation_vehicles_capacity {full <- false; color <- std_color;}
+	}
+	
+	action board_people (float boarding_speed, int people_on_board, agent vehicle, list people_on_board_list){
+		/*
+		 * OVERVIEW:
+		 * The agent Infrastructure is given by the agent Vehicle its boarding speed and the nb of people that are currently on board.
+		 * These are used to compute how many people (at maximum) can be boarded in the simulation step.
+		 * So, the Infrastructure takes up to the max # of people out of the elemnts in the list people_waiting_list.
+		 * It asks each of them if they want to board, if so boarded_people gets increased, the people location is set to mirror the vehicle's one, and their evacuation status is updated. 
+		 * 
+		 */
+		int boarded_people <- 0;
+		bool boarding_successful <- false;
+		int max_nb_of_people_to_board <- round(boarding_speed*step);
+		if max_nb_of_people_to_board < 1 {max_nb_of_people_to_board <- rnd_choice([(1-boarding_speed*step),boarding_speed*step]);}
+		/* If the number of people to board in a simulation step is less than 0.5 (meaning it would round down to zero), we don't just stop. 
+		 * Instead, we board one person with a probability equal to that fractional value. This ensures continuous progression even with small boarding numbers.
+		 */
+		if empty(people_waiting_list) = false {
+			loop person over: people_waiting_list {
+				boarding_successful <- false;
+				ask person {
+					/* person chooses whether to board*/
+					//boarding_successful <- choose_whether_to_board();
+					boarding_successful <- true;
+				}
+				if boarding_successful = true {
+					remove item: person from: people_waiting_list; 
+					add item: person to: people_on_board_list;
+					ask person {
+						//self.vehicle_boarded <- vehicle; 
+						//self.boarded <- true; //this will activate a reflex in the person agent that make it follow the vehicle
+					}
+					boarded_people <- boarded_people + 1;
+				}				
+				if boarded_people = max_nb_of_people_to_board {break;}
+				if empty(people_waiting_list) = true {break;}
+			}
+		}
+		people_on_board <- people_on_board + boarded_people;
+		return people_on_board;
+	}
+	
+	action unboard_people (float unboarding_speed, int people_on_board, list<agent> people_on_board_list){
+		int unboarded_people <- 0;
+		int max_nb_of_people_to_unboard <- round(unboarding_speed*step);
+		if max_nb_of_people_to_unboard < 1 {max_nb_of_people_to_unboard <- rnd_choice([(1-unboarding_speed*step),unboarding_speed*step]);}
+		loop person over: people_on_board_list {
+			//TODO: update a global varable containg the number of evacuees
+			remove item: person from: people_waiting_list;
+			ask person {do die;}
+			unboarded_people <- unboarded_people + 1;
+			if unboarded_people = max_nb_of_people_to_unboard {break;}
+			if empty(people_waiting_list) = true {break;}
+		}
+		people_on_board <- people_on_board - unboarded_people;
+		return people_on_board;
+	}
+	
+	action update_viability_status {
+		if viability = true {
+			actual_evacuation_vehicles_capacity <- max_evacuation_vehicles_capacity;
+			actual_people_capacity <- max_people_capacity;
+			color <- std_color;
+		}
+		if viability = false {
+			actual_evacuation_vehicles_capacity <- 0;
+			actual_people_capacity <- 0;
+			color <- unviable_color;
+		}
+	}
+}
+
 	
  
  
