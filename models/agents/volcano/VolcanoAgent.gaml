@@ -164,7 +164,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			loop person over: unexposed_people{
 				if self distance_to person <= self.size {
 					if exposition_model = "squared" {
-						if flip((intensity^2) / ((length(intensity_distribution)+1)^2)) {
+						if flip(float(intensity^2) / ((length(intensity_distribution))^2)) {
 							ask person {
 								self.boom_intensity <- myself.intensity;
 							}
