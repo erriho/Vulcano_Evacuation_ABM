@@ -120,7 +120,7 @@ species RoaringSoundEmissionManager parent: EruptivePhenomenonManager{
 				activity_level <- myself.activity_level;
 				speed_of_sound <- myself.speed_of_sound;
 				max_duration <- myself.max_duration;
-				intensity_distribution <- myself.intensity_distribution;
+				self.intensity_distribution <- myself.intensity_distribution;
 				self.should_initialize <- true;
 			}
 			can_create <- false;
@@ -148,8 +148,8 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	float size <- 0.0 #m;
 	float speed_of_sound;
 	list<float> intensity_distribution;
-	list<agent> unexposed_people;
-	string exposition_model <- "proportional";
+	list<people> unexposed_people;
+	string exposition_model <- "squared";
 	
 	reflex initialize when: should_initialize = true {
 		unexposed_people <- agents of_species(species(people));
@@ -163,8 +163,12 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		if empty(unexposed_people) = false {
 			loop person over: unexposed_people{
 				if self distance_to person <= self.size {
-					if exposition_model = "prop" {
-						
+					if exposition_model = "squared" {
+						if flip((intensity^2) / ((length(intensity_distribution)+1)^2)) {
+							ask person {
+								self.boom_intensity <- myself.intensity;
+							}
+						}
 					}
 					//can expand to other exposition models
 					remove item: person from: unexposed_people;
@@ -180,4 +184,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 }
 
-species people {}
+species people {
+	int boom_intensity;
+}
