@@ -69,7 +69,7 @@ species Volcano {
 				else {self.lambda <- 180.0;}
     		}
     	}
-    	else {if RoaringSoundEmissionManager != nil or RoaringSoundEmissionManager != [] {ask RoaringSoundEmissionManager {do die;}}}    	
+    	else {if RoaringSoundEmissionManager != nil or RoaringSoundEmissionManager != [] {ask RoaringSoundEmissionManager {do die;}}}
 		correct_initialization <- true;
 		write "Initialization completed.";
     }
@@ -131,7 +131,7 @@ species RoaringSoundEmissionManager parent: EruptivePhenomenonManager{
 	//phenomenon variables 
 	float speed_of_sound;
 	float max_duration;
-	list intensity_distribution;
+	list<float> intensity_distribution;
 	
 	reflex pause when: time_waited < waiting_time{
 		time_waited <- time_waited + step;
@@ -146,7 +146,7 @@ species RoaringSoundEmissionManager parent: EruptivePhenomenonManager{
 				activity_level <- myself.activity_level;
 				speed_of_sound <- myself.speed_of_sound;
 				max_duration <- myself.max_duration;
-				intensity_distribution <- myself.intensity_distribution;
+				self.intensity_distribution <- myself.intensity_distribution;
 				self.should_initialize <- true;
 			}
 			can_create <- false;
@@ -173,9 +173,12 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	int intensity;
 	float size <- 0.0 #m;
 	float speed_of_sound;
-	list intensity_distribution;
+	list<float> intensity_distribution;
+	list<people> unexposed_people;
+	string exposition_model <- "squared";
 	
 	reflex initialize when: should_initialize = true {
+		unexposed_people <- agents of_species(species(people));
 		size <- 0.0;
 		intensity <- rnd_choice(intensity_distribution);
 		write "Boom!" + " - Intensity: " + string(intensity);
@@ -183,6 +186,21 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	
 	reflex execute {
+		if empty(unexposed_people) = false {
+			loop person over: unexposed_people{
+				if self distance_to person <= self.size {
+					if exposition_model = "squared" {
+						if flip(float(intensity^2) / ((length(intensity_distribution))^2)) {
+							ask person {
+								self.boom_intensity <- myself.intensity;
+							}
+						}
+					}
+					//can expand to other exposition models
+					remove item: person from: unexposed_people;
+				}		
+			}
+		}
 		do update_duration;
 		size <- size + speed_of_sound * step;
 	}
@@ -190,6 +208,10 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	aspect default{	
 		draw circle(size) color: rgb(#blue, 0.1);
 	}
+}
+
+species people {
+	int boom_intensity;
 }
  
 experiment main type: gui {     

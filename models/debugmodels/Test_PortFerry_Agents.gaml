@@ -7,7 +7,7 @@ global {
 	file island_shp <- file("../../includes/Shapefiles/Island/Vulcano_Island.shp");
 	file roads_shp <- file("../../includes/Shapefiles/Roads/Vulcano_Roads_and_Paths_United_Cleaned.shp");
 	//file Milazzo_route_shp <- file("../../includes/Shapefiles/Ferry_Routes/Vulcano_Milazzo.shp");
- 	file Milazzo_route_shp <- file("../../includes/Shapefiles/Ferry_Routes/FerryRoutes2.shp");
+ 	file Milazzo_route_shp <- file("../../includes/Shapefiles/Ferry_Routes/FerryRoutes.shp");
  	file buildings_shp <- file("../../includes/Shapefiles/Buildings/Vulcano_Buildings.shp");
  	file lafossa_crater_shp <- file("../../includes/Shapefiles/Craters/LaFossaCrater.shp");
     geometry shape <- envelope(island_shp);
@@ -29,6 +29,7 @@ global {
 	    create Buildings from: buildings_shp;
 		create Port from: ports_shp;
 		create Heliport from: heliports_shp;
+		
 		loop port over: Port {
 			loop row_index over: range(length(rows_list(ports_data_matrix))-1) {
 				if port.name = string(ports_data_matrix[0, row_index]) {
@@ -54,8 +55,10 @@ global {
 			}
 			if heliport.name = 'ZAE Cratere' {ask heliport {do die;}}
 		}
-		
 	    ferry_network <- as_edge_graph(Ferry_Route);
+		write ferry_network;
+		road_network <- as_edge_graph(Roads);
+		write length(road_network.vertices);
 	    
 		create ferry number: 1 {
 			evacuation_mode <- true;
@@ -68,7 +71,6 @@ global {
 			//people_on_board <- 1;
 			capacity <- 1;
 			location <- any_location_in(one_of(ferry_network.edges));
-			write ferry_network;
 			loop port over: Port {
 				write port.name;
 				if port.name = "Porto di Milazzo" {
@@ -77,7 +79,7 @@ global {
 					//target_destination <- port.location;
 					write string(self.hub_location) + "-" + port.location;
 				}
-				if port.name = "Porto di Levante" {
+				if port.name = "Porto di Levante" {	
 					target_infrastructure_agent <- port;
 					self.target_destination <- port.location;
 					//write string(self.target_destination) + "-" + port.location;
