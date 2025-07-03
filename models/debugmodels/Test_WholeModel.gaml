@@ -201,7 +201,7 @@ species EvacuationInfrastructure {
 	int actual_people_capacity;
 	int occupied_evacuation_spots; 
 	int people_waiting_nb;
-	list<People> people_waiting_list;
+	list<Human> people_waiting_list;
 	bool full <- false;
 	bool viability <- true;
 	//aspect customization
@@ -218,7 +218,7 @@ species EvacuationInfrastructure {
 		people_waiting_nb <- length(people_waiting_list);
 	}
 	
-	action board_people (float boarding_speed, int people_on_board, agent vehicle, list people_on_board_list){
+	action board_people (float boarding_speed, int people_on_board, agent vehicle, list<Human> people_on_board_list){
 		/*
 		 * OVERVIEW:
 		 * The agent Infrastructure is given by the agent Vehicle its boarding speed and the nb of people that are currently on board.
@@ -228,7 +228,7 @@ species EvacuationInfrastructure {
 		 * 
 		 */
 		int boarded_people <- 0;
-		list<People> boarded_people_list <- [];
+		list<Human> boarded_people_list <- [];
 		bool boarding_successful <- false;
 		int max_nb_of_people_to_board <- round(boarding_speed*step);
 		//if max_nb_of_people_to_board < 1 {max_nb_of_people_to_board <- rnd_choice([(1-boarding_speed*step),boarding_speed*step]);}
@@ -252,10 +252,7 @@ species EvacuationInfrastructure {
 				if (length(people_waiting_list)-boarded_people=0) = true {break;}
 			}
 			loop person over: boarded_people_list{
-				if person in people_waiting_list {
-					write "OOOO";
-					people_waiting_list >- person;
-				}
+				people_waiting_list >- person;
 				add item: person to: people_on_board_list;
 				ask person {
 					self.boarded_vehicle <- EvacuationVehicle(vehicle); 
@@ -267,17 +264,21 @@ species EvacuationInfrastructure {
 		return people_on_board;
 	}
 	
-	action unboard_people (float unboarding_speed, int people_on_board, list<agent> people_on_board_list){
+	action unboard_people (float unboarding_speed, int people_on_board, list<Human> people_on_board_list){
 		int unboarded_people <- 0;
+		list<Human> unboarded_people_list <- [];
 		int max_nb_of_people_to_unboard <- round(unboarding_speed*step);
 		if max_nb_of_people_to_unboard < 1 {max_nb_of_people_to_unboard <- rnd_choice([(1-unboarding_speed*step),unboarding_speed*step]);}
 		loop person over: people_on_board_list {
-			//TODO: update a global varable containg the number of evacuees
-			remove item: person from: people_waiting_list;
-			ask person {do die;}
+			add person to: unboarded_people_list;
 			unboarded_people <- unboarded_people + 1;
 			if unboarded_people = max_nb_of_people_to_unboard {break;}
-			if empty(people_waiting_list) = true {break;}
+			if (length(people_on_board_list)-unboarded_people=0) = true {break;}
+		}
+		loop person over: unboarded_people_list{
+			remove item: person from: people_on_board_list;
+			//TODO: update a global varable containg the number of evacuees
+			ask person {do die;}
 		}
 		people_on_board <- people_on_board - unboarded_people;
 		return people_on_board;
@@ -316,159 +317,6 @@ species Heliport parent: EvacuationInfrastructure {
 		draw circle(20) color: rgb(color, 0.9);
 	}
 }
-/*
- *  EVACUTION VEHICLES: ferries, helicopters
- */
-species EvacuationVehicle skills: [moving] {
-	//hub variables
-	EvacuationInfrastructure hub;
-	point hub_location;
-	//target variables
-	EvacuationInfrastructure target_infrastructure_agent;
-	point target_destination;
-	//evacuation variables
-	bool evacuation_mode <- false; //TRUE if an evacuation has been ordered
-	bool ready_to_evacuate <- false;
-	bool safe <- true; //TRUE if the agent feel safe in its location
-	//boarding variables
-	bool free_to_go <- false;
-	bool should_board <- false;
-	float boarding_speed;
-	float approach_distance;
-	bool waiting_people_to_board <- false;
-	bool waited_for_too_long <- false;
-	float waiting_time <- 0.0 #s; 
-	float max_waiting_time;
-	//unboarding variables
-	bool should_unboard <- false;
-	float unboarding_speed;
-	//other vehichle characteristics
-	int capacity; //the vehicle capacity
-	int people_on_board; //it reflects how many people are on board
-	list<People> people_on_board_list;
-	float cruising_speed;	
-	
-	reflex waiting when: waiting_people_to_board = true{
-		write self.name + "- WAITING!"; //debug line
-		waiting_time <- waiting_time + step;
-		if waiting_time > max_waiting_time {
-			write self.name + "- waited for too long. Going back to hub.";
-			ready_to_evacuate <- false;
-			free_to_go <- false;
-			should_board <- false;
-			waiting_people_to_board <- false;
-			waiting_time <- 0.0 #s;
-			waited_for_too_long <- true;
-			ask target_infrastructure_agent {self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;}
-		}
-	}
-	
-	reflex boarding when: should_board = true {
-		if waiting_people_to_board = false {waiting_people_to_board <- true;}
-		ask target_infrastructure_agent {
-			myself.people_on_board <- int(board_people(myself.boarding_speed, myself.people_on_board, myself, myself.people_on_board_list));
-		}
-		if people_on_board = capacity {
-			write self.name + " - Boarding complete.";
-			ready_to_evacuate <- false;
-			free_to_go <- false;
-			should_board <- false;
-			waiting_people_to_board <- false;
-			waiting_time <- 0.0 #s;
-			ask target_infrastructure_agent {self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;}
-		}	
-	}
-	
-	reflex unboarding when: should_unboard = true{
-		ask target_infrastructure_agent {
-			myself.people_on_board <- int(unboard_people(myself.unboarding_speed, myself.people_on_board, myself.people_on_board_list));
-		}
-		if people_on_board = 0 {
-			write self.name + " - Unboarding complete.";
-			ready_to_evacuate <- true;
-			free_to_go <- false;
-			should_unboard <- false;
-		}
-	}
-}
-	//FERRY AGENT
-species Ferry parent: EvacuationVehicle {
-	
-	image_file ferry_icon;
-	
-	reflex ferry_update {
-		//TODO: add comunication from Protezione Civile
-		if evacuation_mode = true {
-			if people_on_board > 0 and ready_to_evacuate = false {
-				if location != hub_location {
-					do goto target: hub_location speed: cruising_speed on: ferry_network;
-					if target_destination != hub_location {target_destination <- hub_location;}
-				}
-				else {
-					if should_unboard = false {should_unboard <- true;}
-				}
-			}
-			else if people_on_board = 0 and ready_to_evacuate = false {
-				if safe = true and waited_for_too_long = false{
-					ready_to_evacuate <- true;
-					free_to_go <- false;
-				}
-				else if safe = false and waited_for_too_long = false{
-					do goto target: hub_location speed: cruising_speed on: ferry_network;
-				}
-				else if waited_for_too_long = true {
-					do goto target: hub_location speed: cruising_speed on: ferry_network;
-					if location = hub_location {
-						ready_to_evacuate <- true;
-					}
-					
-				}
-			}
-			else if people_on_board >= 0 and ready_to_evacuate = true {
-				//TODO: communicate to PC that he is ready to go Vulcano
-				if location != target_destination and target_destination != hub_location {
-					do goto target: target_destination speed: speed on: ferry_network;
-					if location distance_to target_destination < approach_distance and free_to_go = false {
-						//Chiede al porto se è libero
-						speed <- 0.0;
-						ask target_infrastructure_agent {
-							if self.full = false {
-								myself.free_to_go <- true;
-								self.occupied_evacuation_spots <- self.occupied_evacuation_spots +1;
-							}
-							else if self.full = true {/*do nothing*/}
-						}
-						if safe = false {ready_to_evacuate <- false;}
-					}
-					if location distance_to target_destination < approach_distance and free_to_go = true {
-						speed <- cruising_speed;
-					}
-				}
-				else if location = target_destination and target_destination != hub_location {
-					should_board <- true;
-					speed <- 0.0;
-				}
-				else if target_destination = hub_location {
-					/*wait for PC to tell where to go, in the meanwhile go to hub*/
-					do goto target: target_destination speed: speed on: ferry_network;
-					if location = hub_location {speed <- 0.0;}
-					else {if speed != cruising_speed {speed <- cruising_speed;}}
-				}
-			}
-		}
-		else {do goto target: target_destination speed: speed on: ferry_network;}
-	}
-	
-	reflex ferry_safety_check {}
-	
-	aspect base {
-		draw triangle(300) rotate: heading + 90 color: #darkblue;
-	}
-	aspect icon {
-		draw ferry_icon size: 1;
-	}
-}
-	//TODO: HELICOPTER
 /*
  * TODO: PROTEZIONE CIVILE
  */
@@ -673,7 +521,45 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  * HUMAN SPECIES
  */
  species Human skills: [moving] control: simple_bdi{
- 	
+	//boarding-related variables
+	Port port_to_evacuate_from;
+	bool decided_to_board;
+	EvacuationVehicle boarded_vehicle <- nil;
+	bool boarded <- false;
+ 	// ISLAND EVACUATION
+	predicate at_target_port <- new_predicate("at target port"); 
+	predicate in_target_port <- new_predicate("in target port");
+
+	perceive target: port_to_evacuate_from in: 10 #m {
+		ask myself{
+			do remove_intention(at_target_port, true);
+			do add_desire(in_target_port);
+		}
+	}
+	plan go_to_nearest_port intention: at_target_port {
+		port_to_evacuate_from <- Port closest_to(self);
+		do goto target: port_to_evacuate_from on: road_network;
+	}
+	
+	plan wait_to_board intention: in_target_port {
+		if location != port_to_evacuate_from.location {
+			do goto target: port_to_evacuate_from on: road_network;
+		}
+		else {
+			if self in port_to_evacuate_from.people_waiting_list = false and boarded_vehicle = nil{
+				add self to: port_to_evacuate_from.people_waiting_list;
+				write port_to_evacuate_from.name + "-" + port_to_evacuate_from.people_waiting_list;
+			}
+		}
+	} 
+	bool choose_whether_to_board {	
+		return flip(0.99);	
+	}
+	
+	reflex on_board when: boarded = true { 
+		speed <- boarded_vehicle.speed; 
+		location <- boarded_vehicle.location; 
+	}
  }
 /*
  * PEOPLE
@@ -686,11 +572,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	bool in_Waiting_Area <- false;
 	float view_dist<-30.0;
 	
-	//boarding-related variables
-	Port port_to_evacuate_from;
-	bool decided_to_board;
-	EvacuationVehicle boarded_vehicle;
-	bool boarded <- false;
 	
 	//volcano-related variables 
 	int boom_intensity;
@@ -763,43 +644,17 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 
 
 	//TODO: MOVEMENT
-	//location predicates
 	predicate enjoying_my_time <- new_predicate("enjoying my time");
 	predicate evacuation_order <- new_predicate("evacuation order");
-	predicate at_target_port <- new_predicate("at target port"); 
-	predicate in_target_port <- new_predicate("in target port");
-	
+
 	rule begin_evacuation when: self.has_belief(evacuation_order){
 		do remove_intention(enjoying_my_time, true);
 	}
-	
-	perceive target: port_to_evacuate_from in: 10 #m {
-		ask myself{
-			do remove_intention(at_target_port, true);
-			do add_desire(in_target_port);
-		}
-	}
-	
+		
 	plan lets_wander intention: enjoying_my_time {
 		do wander on: road_network;
 	}
 	
-	plan go_to_nearest_port intention: at_target_port {
-		port_to_evacuate_from <- Port closest_to(self);
-		do goto target: port_to_evacuate_from on: road_network;
-	}
-	
-	plan wait_to_board intention: in_target_port {
-		if location != port_to_evacuate_from.location {
-			do goto target: port_to_evacuate_from on: road_network;
-		}
-		else {
-			if self in port_to_evacuate_from.people_waiting_list = false{
-				add self to: port_to_evacuate_from.people_waiting_list;
-				write port_to_evacuate_from.name + "-" + port_to_evacuate_from.people_waiting_list;
-			}
-		}
-	} 
 	
 	//queste regole mandano l'agente al rifugio anziche al target quando paura o paura conf o credenza di catastrofe 
 	
@@ -830,16 +685,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		do remove_intention(at_target_port, true);
 	}
 	
-	
-	//BOARDING
-	bool choose_whether_to_board {	
-		return flip(0.99);	
-	}
-	
-	reflex on_board when: boarded = true { 
-		speed <- boarded_vehicle.speed; 
-		location <- boarded_vehicle.location; 
-	}
 	
 /*
 	plan evacuation intention: in_waiting_area {
@@ -895,8 +740,158 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  * TODO: FORZE ORDINE
  */
 /*
- * CREATING FERRIES AND HELICOPTERS
+ *  EVACUTION VEHICLES: ferries, helicopters
  */
+species EvacuationVehicle skills: [moving] {
+	//hub variables
+	EvacuationInfrastructure hub;
+	point hub_location;
+	//target variables
+	EvacuationInfrastructure target_infrastructure_agent;
+	point target_destination;
+	//evacuation variables
+	bool evacuation_mode <- false; //TRUE if an evacuation has been ordered
+	bool ready_to_evacuate <- false;
+	bool safe <- true; //TRUE if the agent feel safe in its location
+	//boarding variables
+	bool free_to_go <- false;
+	bool should_board <- false;
+	float boarding_speed;
+	float approach_distance;
+	bool waiting_people_to_board <- false;
+	bool waited_for_too_long <- false;
+	float waiting_time <- 0.0 #s; 
+	float max_waiting_time;
+	//unboarding variables
+	bool should_unboard <- false;
+	float unboarding_speed;
+	//other vehichle characteristics
+	int capacity; //the vehicle capacity
+	int people_on_board; //it reflects how many people are on board
+	list<Human> people_on_board_list;
+	float cruising_speed;	
+	
+	reflex waiting when: waiting_people_to_board = true{
+		write self.name + "- WAITING!"; //debug line
+		waiting_time <- waiting_time + step;
+		if waiting_time > max_waiting_time {
+			write self.name + "- waited for too long. Going back to hub.";
+			ready_to_evacuate <- false;
+			free_to_go <- false;
+			should_board <- false;
+			waiting_people_to_board <- false;
+			waiting_time <- 0.0 #s;
+			waited_for_too_long <- true;
+			ask target_infrastructure_agent {self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;}
+		}
+	}
+	
+	reflex boarding when: should_board = true {
+		if waiting_people_to_board = false {waiting_people_to_board <- true;}
+		ask target_infrastructure_agent {
+			myself.people_on_board <- int(board_people(myself.boarding_speed, myself.people_on_board, myself, myself.people_on_board_list));
+		}
+		if people_on_board = capacity {
+			write self.name + " - Boarding complete.";
+			ready_to_evacuate <- false;
+			free_to_go <- false;
+			should_board <- false;
+			waiting_people_to_board <- false;
+			waiting_time <- 0.0 #s;
+			ask target_infrastructure_agent {self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;}
+		}	
+	}
+	
+	reflex unboarding when: should_unboard = true{
+		ask target_infrastructure_agent {
+			myself.people_on_board <- int(unboard_people(myself.unboarding_speed, myself.people_on_board, myself.people_on_board_list));
+		}
+		if people_on_board = 0 {
+			write self.name + " - Unboarding complete.";
+			ready_to_evacuate <- true;
+			free_to_go <- false;
+			should_unboard <- false;
+		}
+	}
+}
+	//FERRY AGENT
+species Ferry parent: EvacuationVehicle {
+	
+	image_file ferry_icon;
+	
+	reflex ferry_update {
+		//TODO: add comunication from Protezione Civile
+		if evacuation_mode = true {
+			if people_on_board > 0 and ready_to_evacuate = false {
+				if location != hub_location {
+					do goto target: hub_location speed: cruising_speed on: ferry_network;
+					if target_destination != hub_location {target_destination <- hub_location;}
+				}
+				else {
+					if should_unboard = false {should_unboard <- true;}
+				}
+			}
+			else if people_on_board = 0 and ready_to_evacuate = false {
+				if safe = true and waited_for_too_long = false{
+					ready_to_evacuate <- true;
+					free_to_go <- false;
+				}
+				else if safe = false and waited_for_too_long = false{
+					do goto target: hub_location speed: cruising_speed on: ferry_network;
+				}
+				else if waited_for_too_long = true {
+					do goto target: hub_location speed: cruising_speed on: ferry_network;
+					if location = hub_location {
+						ready_to_evacuate <- true;
+					}
+					
+				}
+			}
+			else if people_on_board >= 0 and ready_to_evacuate = true {
+				//TODO: communicate to PC that he is ready to go Vulcano
+				if location != target_destination and target_destination != hub_location {
+					do goto target: target_destination speed: speed on: ferry_network;
+					if location distance_to target_destination < approach_distance and free_to_go = false {
+						//Chiede al porto se è libero
+						speed <- 0.0;
+						ask target_infrastructure_agent {
+							if self.full = false {
+								myself.free_to_go <- true;
+								self.occupied_evacuation_spots <- self.occupied_evacuation_spots +1;
+							}
+							else if self.full = true {/*do nothing*/}
+						}
+						if safe = false {ready_to_evacuate <- false;}
+					}
+					if location distance_to target_destination < approach_distance and free_to_go = true {
+						speed <- cruising_speed;
+					}
+				}
+				else if location = target_destination and target_destination != hub_location {
+					should_board <- true;
+					speed <- 0.0;
+				}
+				else if target_destination = hub_location {
+					/*wait for PC to tell where to go, in the meanwhile go to hub*/
+					do goto target: target_destination speed: speed on: ferry_network;
+					if location = hub_location {speed <- 0.0;}
+					else {if speed != cruising_speed {speed <- cruising_speed;}}
+				}
+			}
+		}
+		else {do goto target: target_destination speed: speed on: ferry_network;}
+	}
+	
+	reflex ferry_safety_check {}
+	
+	aspect base {
+		draw triangle(300) rotate: heading + 90 color: #darkblue;
+	}
+	aspect icon {
+		draw ferry_icon size: 1;
+	}
+}
+	//TODO: HELICOPTER
 
 experiment "show simulation" type: gui {     
     output {
