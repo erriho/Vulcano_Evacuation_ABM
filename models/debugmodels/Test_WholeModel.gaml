@@ -135,15 +135,7 @@ global {
 				if port.name = "Porto di Milazzo" {
 					hub <- port;
 					hub_location <- port.location;
-					//target_destination <- port.location;
 					//DEBUG: write string(self.hub_location) + "-" + port.location;
-					target_infrastructure_agent <- port;
-					self.target_destination <- port.location;
-				}
-				if port.name = "Porto di Levante" {	
-					target_infrastructure_agent <- port;
-					self.target_destination <- port.location;
-					//DEBUG write string(self.target_destination) + "-" + port.location;
 				}
 			}
 			if flip(1/2) {
