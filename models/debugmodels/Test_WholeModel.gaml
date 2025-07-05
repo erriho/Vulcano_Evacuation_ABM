@@ -26,7 +26,7 @@ global {
 	file heliports_shp <- file("../../includes/Shapefiles/Heliports/Heliports.shp");
 	file heliports_data <- csv_file("../../includes/csv/Heliports.csv");
 	matrix heliports_data_matrix <- matrix(heliports_data);
-	//TODO: add ferry and heli data
+	//TODO: add ferry and heli data 
 	/* 
 	 * PARAMETER INITIALIZIATION
 	 */
@@ -118,8 +118,8 @@ global {
 		  * CREATING FERRIES AND HELICOPTERS
 		  */
 		create Ferry number: 5 {
-			//evacuation_mode <- true;
-			//ready_to_evacuate <- true;
+			//DEBUG: evacuation_mode <- true;
+			//DEBUG: ready_to_evacuate <- true;
 			safe <- true;
 			cruising_speed <- 20 #km/#h;
 			speed <- cruising_speed;
@@ -127,7 +127,6 @@ global {
 			boarding_speed <- 1/(15#s);
 			unboarding_speed <- 1/(15#s);
 			max_waiting_time <- 3000 #s;
-			//people_on_board <- 1;
 			capacity <- 20;
 			location <- any_location_in(one_of(ferry_network.vertices));
 			loop port over: Port {
@@ -917,6 +916,31 @@ experiment "show simulation" type: gui {
 	       species RoaringSoundEmission;
 	       species People;
 	    }
+	}
+}
+
+experiment "show simulation_with_charts" type: gui {     
+    output {
+	    display vulcano_map type: 3d{
+	       species Island refresh: false;
+	       species Roads refresh: false;
+	       species Ferry_Route refresh: false;
+	       species Buildings refresh: false; 
+	       species Waiting_Areas refresh: false;
+	       species Port;
+	       species Heliport;
+	       species Ferry aspect: base;
+   	       species Volcano;
+	       species RoaringSoundEmission;
+	       species People;
+	    }
+		display Evacuation_Info refresh: every(120 #cycles) {
+	       //TODO: add a data series for people on board, update the people still to evacuate accordingly (also add something that counts the people at the beginning of the evacuation)
+	       chart "People evacuated successfully" type: series size: {1,0.5}{
+		       	data "People successfully evacuated" value: evacuated_people color: #blue;
+		       	data "People still to evacuate" value: (length(People)-evacuated_people) color: #red;
+	       }			
+		}	       
 	}
 }
 
