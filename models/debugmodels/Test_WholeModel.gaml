@@ -35,11 +35,6 @@ global {
 		"lambda" :: 1000
 	];
 		//people
-	float catastrophe_distance <- 100.0; //distanza alla quale agente puo percepire la catastrofe 
-	float proba_detect_sound <- 0.7; //probabilità che agente rilevi il pericolo 
-	float proba_detect_other_escape <- 0.01; //prob che agente rilevi un'altra fuga di emergenza 
-	float other_distance <- 10.0; //distanza  a cui l'agente puo percepire le altre persone 
-	point shared_target;
 	/*
 	 * ASPECT CUSTOMIZATION
 	 */
@@ -89,8 +84,9 @@ global {
 	    ferry_network <- as_edge_graph(Ferry_Route);
 		road_network <- as_edge_graph(Roads);
 		/*
-		 * TODO: CREATING PROTEZIONE CIVILE
+		 * CREATING CIVIL DEFENSE
 		 */
+		 create CivilDefense number: 1;
 		/*
 		 * CREATING THE VOLCANO AGENT
 		 */
@@ -116,24 +112,28 @@ global {
 		 /*
 		  * CREATING FERRIES AND HELICOPTERS
 		  */
-		create Ferry number: 1 {
+		create Ferry number: 10 {
 			evacuation_mode <- true;
-			ready_to_evacuate <- true;
+			//ready_to_evacuate <- true;
 			safe <- true;
 			cruising_speed <- 20 #km/#h;
 			speed <- cruising_speed;
 			approach_distance <- 1 #km;
+			boarding_speed <- 1/(15#s);
+			unboarding_speed <- 1/(15#s);
 			max_waiting_time <- 3000 #s;
 			//people_on_board <- 1;
 			capacity <- 20;
-			location <- any_location_in(one_of(ferry_network.edges));
+			location <- any_location_in(one_of(ferry_network.vertices));
 			loop port over: Port {
-				write port.name;
+				//DEBUG:write port.name;
 				if port.name = "Porto di Milazzo" {
 					hub <- port;
 					hub_location <- port.location;
 					//target_destination <- port.location;
-					write string(self.hub_location) + "-" + port.location;
+					//DEBUG: write string(self.hub_location) + "-" + port.location;
+					target_infrastructure_agent <- port;
+					self.target_destination <- port.location;
 				}
 				if port.name = "Porto di Levante" {	
 					target_infrastructure_agent <- port;
@@ -201,6 +201,7 @@ species EvacuationInfrastructure {
 	int actual_people_capacity;
 	int occupied_evacuation_spots; 
 	int people_waiting_nb;
+	int people_with_no_assigned_vehicle;
 	list<Human> people_waiting_list;
 	bool full <- false;
 	bool viability <- true;
@@ -231,8 +232,8 @@ species EvacuationInfrastructure {
 		list<Human> boarded_people_list <- [];
 		bool boarding_successful <- false;
 		int max_nb_of_people_to_board <- round(boarding_speed*step);
-		//if max_nb_of_people_to_board < 1 {max_nb_of_people_to_board <- rnd_choice([(1-boarding_speed*step),boarding_speed*step]);}
-		if max_nb_of_people_to_board < 1 {max_nb_of_people_to_board<-1;}
+		if max_nb_of_people_to_board < 1 {max_nb_of_people_to_board <- rnd_choice([(1-boarding_speed*step),boarding_speed*step]);}
+		//DEBUG: write "trying to board" + max_nb_of_people_to_board; 
 		/* If the number of people to board in a simulation step is less than 0.5 (meaning it would round down to zero), we don't just stop. 
 		 * Instead, we board one person with a probability equal to that fractional value. This ensures continuous progression even with small boarding numbers.
 		 */
@@ -318,8 +319,101 @@ species Heliport parent: EvacuationInfrastructure {
 	}
 }
 /*
- * TODO: PROTEZIONE CIVILE
+ * TODO: CivilDefense
  */
+ species CivilDefense {
+ 	// TODO: VOLCANO MONITORING
+ 	// TODO: EVACUATION ORDER
+ /*
+ 	list<Ferry> alerted_ferries;
+ 	reflex alert_ferries when: alerted_ferries != Ferry {
+ 		ask Ferry {evacuation_mode <- true;}
+ 		alerted_ferries <- Ferry;
+ 	}
+  */
+ 	// TODO: MANAGING EVACUATION INFRASTRUCTURES
+	map<string,int> port_people_with_no_ferry_map;
+	list<Port> ports_to_evacuate;
+	float decision_time <- 600 #s;
+	map<string,float> port_decision_time_map;
+
+	map<string,map> port_statuses;
+ 	reflex check_port_status {
+ 		map<string,map> old_port_statuses <- port_statuses;
+ 		map<string,map> new_port_statuses;
+ 		port_statuses <- [];
+ 		loop port over: Port {
+ 			map<string, unknown> status_map;
+ 			status_map <+ [	//"agent" :: port, 
+ 							//"location" :: port.location,
+ 							//"people_waiting" :: port.people_waiting_nb
+ 							//"viability" :: port.viability
+ 							];
+ 			new_port_statuses <+ [port.name :: status_map];
+ 		}
+ 		port_statuses <- new_port_statuses;
+ 		loop port over: Port {
+  			if (port.people_with_no_assigned_vehicle > 0 and port.viability = true) and not (ports_to_evacuate contains port){
+  				port_decision_time_map[port.name] <- port_decision_time_map[port.name] + step; 
+  				if port_decision_time_map[port.name] > decision_time {
+ 					ports_to_evacuate <+ Port(port); 				
+ 				//string debug_name <- port.name; as much as it is weird, this line prevents a bug (not actually passing port), even though it is commented out 				
+ 				}
+ 			}
+ 		}
+ 	}
+ 	
+ 	action update_infrstructure_viability {
+ 		
+ 	}
+ 	// TODO: MANAGING EVACUATION VEHICLES
+ 	list<Ferry> ferries_ready_to_go;
+ 	
+ 	reflex tell_ferry_where_to_go when: !empty(ferries_ready_to_go) {
+ 		if !empty(ports_to_evacuate) {
+		 	list<Port> emptied_ports <- [];
+	 		loop port over: ports_to_evacuate {
+	 			int people_still_waiting <- port.people_with_no_assigned_vehicle;
+	 			loop while: people_still_waiting > 0 and !empty(ferries_ready_to_go){
+	 				Ferry selected_ferry;
+	 				int selected_ferry_capacity <- 0;
+			 		loop ferry over: ferries_ready_to_go {
+			 			if ferry.capacity > selected_ferry_capacity{
+			 				selected_ferry <- ferry;
+			 				selected_ferry_capacity <- ferry.capacity;
+			 			}
+			 		}
+			 		ask selected_ferry {
+			 			self.target_infrastructure_agent <- port;
+			 			self.target_destination <- port.location;
+			 		}
+			 		ferries_ready_to_go >- selected_ferry;
+			 		people_still_waiting <- people_still_waiting - selected_ferry_capacity;	
+			 		write string(time) + " - " + people_still_waiting;
+			 		port.people_with_no_assigned_vehicle <- people_still_waiting; 			
+	 			}
+	 			if people_still_waiting <= 0 {
+	 				emptied_ports <+ Port(port);
+	 				
+	 			} 			
+	 		}
+	 		loop port over: emptied_ports {
+				ports_to_evacuate >- Port(port);
+			}
+		}
+		else {
+			loop ferry over: ferries_ready_to_go {
+				ask ferry {
+		 			self.target_infrastructure_agent <- hub;
+		 			self.target_destination <- hub.location;
+				}	
+			}
+		}
+ 	}
+ 	
+ 	
+ 	
+ }
 /*
  * VOLCANO AGENT
  */
@@ -521,6 +615,8 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  * HUMAN SPECIES
  */
  species Human skills: [moving] control: simple_bdi{
+	bool use_emotions_architecture <- true; //per attivare processo emozionale automatico 
+	bool use_social_architecture <- true;
 	//boarding-related variables
 	Port port_to_evacuate_from;
 	bool decided_to_board;
@@ -548,7 +644,8 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		else {
 			if self in port_to_evacuate_from.people_waiting_list = false and boarded_vehicle = nil{
 				add self to: port_to_evacuate_from.people_waiting_list;
-				write port_to_evacuate_from.name + "-" + port_to_evacuate_from.people_waiting_list;
+				port_to_evacuate_from.people_with_no_assigned_vehicle <- port_to_evacuate_from.people_with_no_assigned_vehicle + 1;
+				//DEBUG: write port_to_evacuate_from.name + "-" + port_to_evacuate_from.people_waiting_list;
 			}
 		}
 	} 
@@ -557,92 +654,23 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	
 	reflex on_board when: boarded = true { 
-		speed <- boarded_vehicle.speed; 
-		location <- boarded_vehicle.location; 
+		//speed <- boarded_vehicle.speed; 
+		//location <- boarded_vehicle.location; 
+		do goto target: boarded_vehicle.location speed: boarded_vehicle.speed on:ferry_network; //computed much faster
 	}
  }
 /*
  * PEOPLE
  */
  species People parent: Human{
-	point target;
-	rgb color <- #blue;
-	bool escape_mode <- false;
-	bool fearful <- true; 
-	bool in_Waiting_Area <- false;
 	float view_dist<-30.0;
-	
 	
 	//volcano-related variables 
 	int boom_intensity;
 	
+	//customiaztion variables	
+	rgb color <- #blue;
 	
-	predicate share_information <- new_predicate("share information") ;
-	
-	
-	//we give them as well 2 beliefs as variables
-    //due credenze ocme predicati catastrofe o non catastrofe
-    //che poi dovrebbe essere un uncertainty 
-	predicate catastropheP <- new_predicate("catastrophe");
-	predicate nonCatastrophe <- new_predicate("catastrophe",false);
-	predicate boomP <- new_predicate("boom");
-
-	//at last we define 2 emotion linked to the knowledge of the catastrophe
-	//emotion fearConfirmed <- new_emotion("fear_confirmed",catastropheP);
-	
-	emotion fearConfirmed <- new_emotion("fear_confirmed");
-	//attenzione fear_comfirmed è una emozione effettivametne 
-	//vedi che accando alle emozion ici mette la credenza a cui sono associate
-	emotion fear <- new_emotion("fear",boomP); //all'emozione ci collega una credenza!!
-	//emotion fear <- nil; //all'emozione ci collega una credenza!!
-	
-	
-	bool noTarget<-true; //serve a controllare se il target è impostato che comunque è regolato in normal_move
-	
-	bool use_emotions_architecture <- true; //per attivare processo emozionale automatico 
-	bool use_social_architecture <- true;
-  // Piano di movimento lungo il grafo stradale
-  //if the agent perceive that their is something that is not normal (a hazard), it has a probability proba_detect_hazard to suppose (add to its unertainty base) that there is a catastrophe occuring
-	//quindi quello che percepisce è hazard e non catastrofe e poi non una certa probabilita aggiunge al suo knowledge base la info , mi sa sotto forma di uncertainty 
-
-	/*
-	* perceive target:RoaringSoundEmission in: size when: not escape_mode and flip(proba_detect_sound){
-	//perceive target:hazard in: hazard_distance {
-		//quindi percepisce hazard quando non è in modalita scappo e estrae anche una prob per capire se vera incamerata nel knowledge base 
-		focus id:"boom" ;//mette il uncertainty a vero attenzione è incertezza , potrebbe esserci una catastrofe 
-		//poi se è nella modalità fearful allora entra nella modalita fuga che è quella dove si switcha anche il valore di escape_mode 
-		ask myself {
-			if(fearful){
-				do add_desire(predicate:share_information, strength: 5.0);
-				do to_escape_mode;
-				write self.name + " fear from hazard"; //perche si dovrebbe essere attivata l'emozione con quella credeza
-			}else{
-				color<-#green;
-				do add_desire(predicate:share_information, strength: 5.0);
-				//si mette in un colore verde  perche comunque ha percepito pericolo ma non ha paura 
-			}
-		}
-	}
-	*/
-
-	//TODO: EMOTIONAL CONTAGION
-	perceive target:People in: other_distance {
-		emotional_contagion emotion_detected:fear emotion_created:fearConfirmed when: fearful;
-		if (has_emotion(fear)) {
-				write self.name + " is FEARFUL";
-		}
-	}
-	emotion joy <- nil; //emozione sganciata da un predicato, per ora vuota
-	perceive target:People in: other_distance{
-		emotional_contagion emotion_detected: joy;
-		ask myself {
-			if (has_emotion(fear)) {
-				write self.name + " fear from contagion 2";
-			}
-		}
-	}
-
-
 	//TODO: MOVEMENT
 	predicate enjoying_my_time <- new_predicate("enjoying my time");
 	predicate evacuation_order <- new_predicate("evacuation order");
@@ -654,87 +682,15 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	plan lets_wander intention: enjoying_my_time {
 		do wander on: road_network;
 	}
-	
-	
-	//queste regole mandano l'agente al rifugio anziche al target quando paura o paura conf o credenza di catastrofe 
-	
-	//if the agent has a fear confirmed, it has the desire to go to a shelter
-	
-//	rule emotion:fearConfirmed remove_intention: at_target new_desire:in_waiting_area strength:5.0;
-	
-	//if the agent has the belief that there is a a catastrophe,  it has the desire to go to a shelter
-	
-//	rule belief:new_predicate("boom") remove_intention:at_target new_desire:in_waiting_area strength:5.0;
-	
-//	rule emotion:new_emotion("fear" ,new_predicate("boom")) new_desire:in_waiting_area remove_intention:at_target when: fearful strength:5.0;
-	
-	//rule emotion:new_emotion("fear" ,new_predicate("catastrophe")) new_desire:in_shelter remove_intention:at_target when: fearful strength:5.0;
-	
-	
-	
-	//bool noTarget<-true; //serve a controllare se il target è impostato che comunque è regolato in normal_move
-	
 
-	
-	
-	action to_escape_mode {
-		escape_mode <- true;
-		//color <- #darkred;
-		target <- nil;	
-		noTarget <- true;
-		do remove_intention(at_target_port, true);
-	}
-	
-	
-/*
-	plan evacuation intention: in_waiting_area {
-		
-		color <-#darkred;
-		if (target = nil or noTarget) {
-			target <- (Waiting_Areas with_min_of (each.location distance_to location)).location;
-			noTarget <- false;
-		}
-		else  {
-			do goto target: target on: road_network  recompute_path: true;
-			if (target = location)  {
-				//do die;
-				in_Waiting_Area <- true;
-				ask EvacuationInfrastructure closest_to(self){
-					add item: myself to: people_waiting_list;
-			}
-				
-			}		
-		}
-	}
-*/
-	
+	//TODO: EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
 
-//se ho hazard dico a tutti quelli che precedentemente ho incontrato che c'è il pericolo (in qualche modo implicito)
-//l'intention di share information si attiva con una certa forza in ogni caso qunado io percepisco hazard sia che io sia spaventato che no
-	plan share_information_to_friends intention: share_information instantaneous: true {
-		list<People> my_friends <- list<People>((social_link_base where (each.liking > 0)) collect each.agent);
-		loop known_hazard over: get_beliefs_with_name("boom") {
-			ask my_friends {
-				do add_directly_belief(known_hazard);
-				write self.name + " comunicated hazard to :"  ;
-			}
-		}
-		
-		do remove_intention(share_information, true); 
-	}
-	
-	
-	
-	
-	
-	
+	//TODO: EMOTIONAL CONTAGION
+
 	aspect default {
-	  draw circle(5) color: color border: #black;
-	  draw circle(view_dist) color: color border: #black wireframe: true;
+		draw triangle(5) rotate: heading + 90 color: color border: #black;
+		draw circle(view_dist) color: color border: #black wireframe: true;
 	}
-	
-	
-
 }
 /*
  * TODO: FORZE ORDINE
@@ -752,6 +708,7 @@ species EvacuationVehicle skills: [moving] {
 	//evacuation variables
 	bool evacuation_mode <- false; //TRUE if an evacuation has been ordered
 	bool ready_to_evacuate <- false;
+	bool free_info_transmitted <- false;
 	bool safe <- true; //TRUE if the agent feel safe in its location
 	//boarding variables
 	bool free_to_go <- false;
@@ -772,7 +729,7 @@ species EvacuationVehicle skills: [moving] {
 	float cruising_speed;	
 	
 	reflex waiting when: waiting_people_to_board = true{
-		write self.name + "- WAITING!"; //debug line
+		//DEBUG: write self.name + "- WAITING!"; //debug line
 		waiting_time <- waiting_time + step;
 		if waiting_time > max_waiting_time {
 			write self.name + "- waited for too long. Going back to hub.";
@@ -782,7 +739,10 @@ species EvacuationVehicle skills: [moving] {
 			waiting_people_to_board <- false;
 			waiting_time <- 0.0 #s;
 			waited_for_too_long <- true;
-			ask target_infrastructure_agent {self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;}
+			ask target_infrastructure_agent {
+				self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;
+				write self.occupied_evacuation_spots;
+			}
 		}
 	}
 	
@@ -798,7 +758,10 @@ species EvacuationVehicle skills: [moving] {
 			should_board <- false;
 			waiting_people_to_board <- false;
 			waiting_time <- 0.0 #s;
-			ask target_infrastructure_agent {self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;}
+			ask target_infrastructure_agent {
+				self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;
+				self.people_with_no_assigned_vehicle <- self.people_with_no_assigned_vehicle + myself.capacity - myself.people_on_board;
+			}
 		}	
 	}
 	
@@ -810,6 +773,7 @@ species EvacuationVehicle skills: [moving] {
 			write self.name + " - Unboarding complete.";
 			ready_to_evacuate <- true;
 			free_to_go <- false;
+			free_info_transmitted <- false;
 			should_unboard <- false;
 		}
 	}
@@ -841,14 +805,24 @@ species Ferry parent: EvacuationVehicle {
 				}
 				else if waited_for_too_long = true {
 					do goto target: hub_location speed: cruising_speed on: ferry_network;
+					free_info_transmitted <- false;
+					ready_to_evacuate <- true;
 					if location = hub_location {
-						ready_to_evacuate <- true;
 					}
 					
 				}
 			}
 			else if people_on_board >= 0 and ready_to_evacuate = true {
 				//TODO: communicate to PC that he is ready to go Vulcano
+				if people_on_board = 0 and free_info_transmitted = false{
+					ask CivilDefense {
+						if not (self.ferries_ready_to_go contains myself) {
+							write "Hey PC!";
+							self.ferries_ready_to_go <+ myself;
+						}
+					}
+					free_info_transmitted <- true;
+				}
 				if location != target_destination and target_destination != hub_location {
 					do goto target: target_destination speed: speed on: ferry_network;
 					if location distance_to target_destination < approach_distance and free_to_go = false {
