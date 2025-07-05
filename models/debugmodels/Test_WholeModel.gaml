@@ -1,6 +1,9 @@
 model TestModel
 
 global {
+	//gloal variables
+	int evacuated_people;
+	
 	//global variables needed to represent the world
 	graph road_network;
 	graph ferry_network;
@@ -84,10 +87,6 @@ global {
 	    ferry_network <- as_edge_graph(Ferry_Route);
 		road_network <- as_edge_graph(Roads);
 		/*
-		 * CREATING CIVIL DEFENSE
-		 */
-		 create CivilDefense number: 1;
-		/*
 		 * CREATING THE VOLCANO AGENT
 		 */
  		create Volcano number: 1{
@@ -98,6 +97,12 @@ global {
 			new_activity_level <- 2;
 			eruption_engine_params_map <- glob_eruption_engine_params_map;
 		}
+		/*
+		 * CREATING CIVIL DEFENSE
+		 */
+		 create CivilDefense number: 1{
+		 	name <- "Protezione Civile";
+		 }
 		 /*
 		  * TODO: CREATING PEOPLE
 		  */
@@ -112,8 +117,8 @@ global {
 		 /*
 		  * CREATING FERRIES AND HELICOPTERS
 		  */
-		create Ferry number: 10 {
-			evacuation_mode <- true;
+		create Ferry number: 5 {
+			//evacuation_mode <- true;
 			//ready_to_evacuate <- true;
 			safe <- true;
 			cruising_speed <- 20 #km/#h;
@@ -138,8 +143,18 @@ global {
 				if port.name = "Porto di Levante" {	
 					target_infrastructure_agent <- port;
 					self.target_destination <- port.location;
-					//write string(self.target_destination) + "-" + port.location;
+					//DEBUG write string(self.target_destination) + "-" + port.location;
 				}
+			}
+			if flip(1/2) {
+				Port port <- Port first_with(each.name = "Porto di Milazzo");
+				target_infrastructure_agent <- port;
+				self.target_destination <- port.location;
+			}
+			else {
+				Port port <- Port first_with(each.name = "Porto di Levante");
+				target_infrastructure_agent <- port;
+				self.target_destination <- port.location;				
 			}
 		}
 	}
@@ -259,7 +274,7 @@ species EvacuationInfrastructure {
 					self.boarded_vehicle <- EvacuationVehicle(vehicle); 
 					self.boarded <- true; //this will activate a reflex in the person agent that make it follow the vehicle
 				}
-		}
+			}
 		}
 		people_on_board <- people_on_board + boarded_people;
 		return people_on_board;
@@ -278,7 +293,7 @@ species EvacuationInfrastructure {
 		}
 		loop person over: unboarded_people_list{
 			remove item: person from: people_on_board_list;
-			//TODO: update a global varable containg the number of evacuees
+			evacuated_people <- evacuated_people + 1;
 			ask person {do die;}
 		}
 		people_on_board <- people_on_board - unboarded_people;
@@ -322,23 +337,45 @@ species Heliport parent: EvacuationInfrastructure {
  * TODO: CivilDefense
  */
  species CivilDefense {
- 	// TODO: VOLCANO MONITORING
- 	// TODO: EVACUATION ORDER
- /*
- 	list<Ferry> alerted_ferries;
- 	reflex alert_ferries when: alerted_ferries != Ferry {
- 		ask Ferry {evacuation_mode <- true;}
- 		alerted_ferries <- Ferry;
+ 	// VOLCANO MONITORING
+ 	int LaFossa_activity_level;
+ 	Volcano LaFossa;
+ 	bool monitor_la_fossa <- false;
+ 	init {
+ 		if Volcano first_with(each.name = "LaFossa") != nil {
+	 		LaFossa <- Volcano first_with(each.name = "LaFossa"); 
+	 		monitor_la_fossa <- true;			
+ 		}
  	}
-  */
+ 	reflex monitor_volcano when: monitor_la_fossa {
+ 		float evac_order_issuance_time;
+ 		LaFossa_activity_level <- LaFossa.activity_level;	
+ 		if LaFossa_activity_level = 2 and issue_evacuation_order = false{
+ 			evac_order_issuance_time <- evac_order_issuance_time + step; 
+  			if evac_order_issuance_time >= time_needed_to_issue_evac_order {
+  				write self.name + ": evacuation order issued.";
+ 				issue_evacuation_order <- true;
+ 			}
+		}
+ 	}
+ 	// TODO: EVACUATION ORDER
+ 	bool issue_evacuation_order <- false;
+ 	float time_needed_to_issue_evac_order <- 0 #s;
+ 	bool ITallert <- false;
+ 	//ferries
+ 	list<Ferry> alerted_ferries;
+ 	reflex alert_ferries when: alerted_ferries != Ferry and issue_evacuation_order = true{
+ 		ask Ferry {evacuation_mode <- true;}
+ 		alerted_ferries <- list(Ferry);
+ 	}
  	// TODO: MANAGING EVACUATION INFRASTRUCTURES
 	map<string,int> port_people_with_no_ferry_map;
 	list<Port> ports_to_evacuate;
 	float decision_time <- 600 #s;
 	map<string,float> port_decision_time_map;
-
 	map<string,map> port_statuses;
  	reflex check_port_status {
+ 		/*
  		map<string,map> old_port_statuses <- port_statuses;
  		map<string,map> new_port_statuses;
  		port_statuses <- [];
@@ -347,11 +384,12 @@ species Heliport parent: EvacuationInfrastructure {
  			status_map <+ [	//"agent" :: port, 
  							//"location" :: port.location,
  							//"people_waiting" :: port.people_waiting_nb
- 							//"viability" :: port.viability
+ 							"viability" :: port.viability
  							];
  			new_port_statuses <+ [port.name :: status_map];
  		}
  		port_statuses <- new_port_statuses;
+ 		*/
  		loop port over: Port {
   			if (port.people_with_no_assigned_vehicle > 0 and port.viability = true) and not (ports_to_evacuate contains port){
   				port_decision_time_map[port.name] <- port_decision_time_map[port.name] + step; 
@@ -363,9 +401,7 @@ species Heliport parent: EvacuationInfrastructure {
  		}
  	}
  	
- 	action update_infrstructure_viability {
- 		
- 	}
+ 	action update_infrstructure_viability {}
  	// TODO: MANAGING EVACUATION VEHICLES
  	list<Ferry> ferries_ready_to_go;
  	
@@ -389,7 +425,7 @@ species Heliport parent: EvacuationInfrastructure {
 			 		}
 			 		ferries_ready_to_go >- selected_ferry;
 			 		people_still_waiting <- people_still_waiting - selected_ferry_capacity;	
-			 		write string(time) + " - " + people_still_waiting;
+			 		//DEBUG: write string(time) + " - " + people_still_waiting;
 			 		port.people_with_no_assigned_vehicle <- people_still_waiting; 			
 	 			}
 	 			if people_still_waiting <= 0 {
@@ -741,7 +777,6 @@ species EvacuationVehicle skills: [moving] {
 			waited_for_too_long <- true;
 			ask target_infrastructure_agent {
 				self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;
-				write self.occupied_evacuation_spots;
 			}
 		}
 	}
@@ -817,7 +852,7 @@ species Ferry parent: EvacuationVehicle {
 				if people_on_board = 0 and free_info_transmitted = false{
 					ask CivilDefense {
 						if not (self.ferries_ready_to_go contains myself) {
-							write "Hey PC!";
+							//DEBUG write "Ready to evacuate people!";
 							self.ferries_ready_to_go <+ myself;
 						}
 					}
