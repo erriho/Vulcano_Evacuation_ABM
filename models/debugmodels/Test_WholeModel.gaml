@@ -189,12 +189,6 @@ species Buildings {
     draw shape color: rgb(53, 53, 53);
     }
 }
-	//WAITING AREAS
-species Waiting_Areas {
-    aspect default{
-    draw shape color: rgb(153, 153, 153);
-    }
-}
 
 /*
  * EVACUATION INFRASTRUCTURES: ports, heliports
@@ -307,9 +301,10 @@ species EvacuationInfrastructure {
 }
 	// PORT AGENT
 species Port parent: EvacuationInfrastructure {
-	rgb color <- #blue;
-	rgb std_color <- #blue;
-	
+	init {
+		color <- #blue;
+		std_color <- #blue;		
+	}
 	aspect default {
 		draw circle(20) color: rgb(color, 0.9);
 		if self.name != "Porto di Milazzo" {draw string(string(people_waiting_nb) + "/" + string(actual_people_capacity)) font: font(font_name, 5) color: color;}
@@ -318,12 +313,25 @@ species Port parent: EvacuationInfrastructure {
 	//HELIPORT AGENT
 species Heliport parent: EvacuationInfrastructure {
 	bool lights;
-	rgb color <- #orange;
-	rgb std_color <- #orange;
+	init {
+		color <- #orange;
+		std_color <- #orange;		
+	}
 	
 	aspect default {
 		draw circle(20) color: rgb(color, 0.9);
 	}
+}
+
+	//WAITING AREAS
+species Waiting_Areas parent: EvacuationInfrastructure {
+    init {
+    	color <- rgb(153, 153, 153);
+    	std_color <- rgb(153, 153, 153);
+    }
+    aspect default{    	
+    	draw shape color: rgb(color, 0.9);
+    }
 }
 /*
  * TODO: CivilDefense
