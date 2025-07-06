@@ -102,6 +102,7 @@ global {
 		 */
 		 create CivilDefense number: 1{
 		 	name <- "Protezione Civile";
+		 	ITallert <- true;
 		 }
 		 /*
 		  * TODO: CREATING PEOPLE
@@ -109,7 +110,8 @@ global {
 		create People number: 50 {
 			speed <- 30 #km/#h;
 			location <- any_location_in(one_of(Roads));
-     	 	do add_desire(at_target_port);
+     	 	//do add_desire(at_target_port);
+     	 	do add_desire(enjoying_my_time);
     	}
 		 /*
 		  * TODO: CREATING FORZE ORDINE
@@ -333,7 +335,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
     }
 }
 /*
- * TODO: CivilDefense
+ * CivilDefense
  */
  species CivilDefense {
  	// VOLCANO MONITORING
@@ -360,12 +362,28 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	// TODO: EVACUATION ORDER
  	bool issue_evacuation_order <- false;
  	float time_needed_to_issue_evac_order <- 0 #s;
- 	bool ITallert <- false;
- 	//ferries
+ 		//ferries
  	list<Ferry> alerted_ferries;
- 	reflex alert_ferries when: alerted_ferries != Ferry and issue_evacuation_order = true{
+ 	reflex alert_ferries when: !empty(Ferry - alerted_ferries) and issue_evacuation_order = true{
  		ask Ferry {evacuation_mode <- true;}
  		alerted_ferries <- list(Ferry);
+ 	}
+	 	//people
+ 	list<People> alerted_people <- [];
+ 	bool ITallert <- false; 
+ 	float ITallert_issuance_time <- 0 #s;
+ 	float time_needed_to_issue_ITallert <- 0 #s;
+ 	reflex alert_people_with_ITallert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITallert = true {	
+ 		ITallert_issuance_time <- ITallert_issuance_time + step; 
+ 		if ITallert_issuance_time >= time_needed_to_issue_ITallert {
+ 			write "(" + time + ")" + self.name + ": issued ITallert message.";
+ 			loop person over: People {
+ 				ask person {
+ 					do add_belief(evacuation_order);	 					
+ 				}
+	 		} 			
+	 		alerted_people <- list(People);
+ 		}
  	}
  	// TODO: MANAGING EVACUATION INFRASTRUCTURES
 	map<string,int> port_people_with_no_ferry_map;
@@ -706,13 +724,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	//customiaztion variables	
 	rgb color <- #blue;
 	
-	//TODO: MOVEMENT
+	//TODO: MOVEMENT and EVACUATION
 	predicate enjoying_my_time <- new_predicate("enjoying my time");
 	predicate evacuation_order <- new_predicate("evacuation order");
-
-	rule begin_evacuation when: self.has_belief(evacuation_order){
-		do remove_intention(enjoying_my_time, true);
-	}
+	//TODO: adjust the followinf rule to define a more complex evacuation decision (tipo fai un piano che è choose_to_evacuate, che si attiva in questo modo)
+	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: at_target_port;
 		
 	plan lets_wander intention: enjoying_my_time {
 		do wander on: road_network;
@@ -847,7 +863,6 @@ species Ferry parent: EvacuationVehicle {
 				}
 			}
 			else if people_on_board >= 0 and ready_to_evacuate = true {
-				//TODO: communicate to PC that he is ready to go Vulcano
 				if people_on_board = 0 and free_info_transmitted = false{
 					ask CivilDefense {
 						if not (self.ferries_ready_to_go contains myself) {
@@ -860,7 +875,7 @@ species Ferry parent: EvacuationVehicle {
 				if location != target_destination and target_destination != hub_location {
 					do goto target: target_destination speed: speed on: ferry_network;
 					if location distance_to target_destination < approach_distance and free_to_go = false {
-						//Chiede al porto se è libero
+						//ask port whether it is free or not
 						speed <- 0.0;
 						ask target_infrastructure_agent {
 							if self.full = false {
