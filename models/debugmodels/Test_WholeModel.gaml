@@ -726,13 +726,26 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	//TODO: MOVEMENT and EVACUATION
 	predicate enjoying_my_time <- new_predicate("enjoying my time");
-	predicate evacuation_order <- new_predicate("evacuation order");
-	//TODO: adjust the followinf rule to define a more complex evacuation decision (tipo fai un piano che è choose_to_evacuate, che si attiva in questo modo)
-	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: at_target_port;
 		
 	plan lets_wander intention: enjoying_my_time {
 		do wander on: road_network;
 	}
+	
+	predicate evacuation_order <- new_predicate("evacuation order");
+	predicate need_evac_decision <- new_predicate("need to take a decision on whether to evacuate");
+	predicate going_to_port <- new_predicate("decided to go to port"); 
+	predicate going_rescue_someone <- new_predicate("decided to go rescue someone");
+	predicate waiting_for_someone <- new_predicate("decided to wait for someone");
+	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision;
+	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: at_target_port;
+	
+	plan choose_whether_to_evacuate intention: need_evac_decision {
+		//decision process
+		if flip(1) {
+			do add_belief(going_to_port);
+		} 
+	}
+	  
 
 	//TODO: EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
 
