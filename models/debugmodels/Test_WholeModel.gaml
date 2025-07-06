@@ -136,7 +136,7 @@ global {
 				if port.name = "Porto di Milazzo" {
 					hub <- port;
 					hub_location <- port.location;
-					//DEBUG: write string(self.hub_location) + "-" + port.location;
+					//write "DEBUG: " + string(self.hub_location) + "-" + port.location;
 				}
 			}
 			if flip(1/2) {
@@ -149,6 +149,23 @@ global {
 				target_infrastructure_agent <- port;
 				self.target_destination <- port.location;				
 			}
+		}
+		create Helicopter number: 2 {
+			//DEBUG: evacuation_mode <- true;
+			//DEBUG: ready_to_evacuate <- true;
+			safe <- true;
+			cruising_speed <- 150 #km/#h;
+			speed <- 0 #km/#h;
+			approach_distance <- 100 #m;
+			boarding_speed <- 1/(15#s);
+			unboarding_speed <- 1/(15#s);
+			max_waiting_time <- 1200 #s;
+			capacity <- 5;
+			Heliport base_heliport <- Heliport first_with(each.name = "Nave 1");
+			hub <- base_heliport;
+			hub_location <- hub.location;
+			location <- hub.location;
+			target_destination <- hub_location; 
 		}
 	}
 }
@@ -235,7 +252,7 @@ species EvacuationInfrastructure {
 		bool boarding_successful <- false;
 		int max_nb_of_people_to_board <- round(boarding_speed*step);
 		if max_nb_of_people_to_board < 1 {max_nb_of_people_to_board <- rnd_choice([(1-boarding_speed*step),boarding_speed*step]);}
-		//DEBUG: write "trying to board" + max_nb_of_people_to_board; 
+		//write "DEBUG: trying to board" + max_nb_of_people_to_board; 
 		/* If the number of people to board in a simulation step is less than 0.5 (meaning it would round down to zero), we don't just stop. 
 		 * Instead, we board one person with a probability equal to that fractional value. This ensures continuous progression even with small boarding numbers.
 		 */
@@ -359,14 +376,19 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  			}
 		}
  	}
- 	// TODO: EVACUATION ORDER
+ 	// TODO: EVACUATION ORDER (missing forze dell'ordine)
  	bool issue_evacuation_order <- false;
  	float time_needed_to_issue_evac_order <- 0 #s;
- 		//ferries
+ 		//ferries and helicopers
  	list<Ferry> alerted_ferries;
  	reflex alert_ferries when: !empty(Ferry - alerted_ferries) and issue_evacuation_order = true{
  		ask Ferry {evacuation_mode <- true;}
  		alerted_ferries <- list(Ferry);
+ 	}
+ 	list<Helicopter> alerted_helicopters;
+ 	reflex alert_helicopters when: !empty(Helicopter - alerted_helicopters) and issue_evacuation_order = true{
+ 		ask Helicopter {evacuation_mode <- true;}
+ 		alerted_helicopters <- list(Helicopter);
  	}
 	 	//people
  	list<People> alerted_people <- [];
@@ -385,14 +407,14 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 	 		alerted_people <- list(People);
  		}
  	}
- 	// TODO: MANAGING EVACUATION INFRASTRUCTURES
-	map<string,int> port_people_with_no_ferry_map;
+ 	// TODO: MANAGING EVACUATION INFRASTRUCTURES (missing heli)
 	list<Port> ports_to_evacuate;
 	float decision_time <- 600 #s;
 	map<string,float> port_decision_time_map;
 	map<string,map> port_statuses;
  	reflex check_port_status {
  		/*
+ 		 //this piece of code was commented out as it is not needed at the moment
  		map<string,map> old_port_statuses <- port_statuses;
  		map<string,map> new_port_statuses;
  		port_statuses <- [];
@@ -417,10 +439,25 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  			}
  		}
  	}
+
+	list<Heliport> heliports_to_evacuate;
+	map<string,float> heliport_decision_time_map;
+	reflex check_heliport_status{
+		loop heliport over: Heliport {
+  			if (heliport.people_with_no_assigned_vehicle > 0 and heliport.viability = true) and not (heliports_to_evacuate contains heliport){
+  				heliport_decision_time_map[heliport.name] <- heliport_decision_time_map[heliport.name] + step; 
+  				if heliport_decision_time_map[heliport.name] > decision_time {
+ 					heliports_to_evacuate <+ Heliport(heliport); 				
+ 				//string debug_name <- heliport.name; as much as it is weird, this line prevents a bug (not actually passing port), even though it is commented out 				
+ 				}
+ 			}
+ 		}
+	}
  	
  	action update_infrstructure_viability {}
  	// TODO: MANAGING EVACUATION VEHICLES
  	list<Ferry> ferries_ready_to_go;
+ 	list<Helicopter> helicopters_ready_to_go;
  	
  	reflex tell_ferry_where_to_go when: !empty(ferries_ready_to_go) {
  		if !empty(ports_to_evacuate) {
@@ -428,21 +465,14 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 	 		loop port over: ports_to_evacuate {
 	 			int people_still_waiting <- port.people_with_no_assigned_vehicle;
 	 			loop while: people_still_waiting > 0 and !empty(ferries_ready_to_go){
-	 				Ferry selected_ferry;
-	 				int selected_ferry_capacity <- 0;
-			 		loop ferry over: ferries_ready_to_go {
-			 			if ferry.capacity > selected_ferry_capacity{
-			 				selected_ferry <- ferry;
-			 				selected_ferry_capacity <- ferry.capacity;
-			 			}
-			 		}
+	 				Ferry selected_ferry <- ferries_ready_to_go with_max_of(each.capacity);
 			 		ask selected_ferry {
 			 			self.target_infrastructure_agent <- port;
 			 			self.target_destination <- port.location;
 			 		}
 			 		ferries_ready_to_go >- selected_ferry;
-			 		people_still_waiting <- people_still_waiting - selected_ferry_capacity;	
-			 		//DEBUG: write string(time) + " - " + people_still_waiting;
+			 		people_still_waiting <- people_still_waiting - selected_ferry.capacity;	
+			 		//write "DEBUG: " + string(time) + " - " + people_still_waiting;
 			 		port.people_with_no_assigned_vehicle <- people_still_waiting; 			
 	 			}
 	 			if people_still_waiting <= 0 {
@@ -464,6 +494,39 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 		}
  	}
  	
+ 	reflex tell_helicopters_where_to_go when: !empty(helicopters_ready_to_go) {
+	if !empty(heliports_to_evacuate) {
+	 	list<Heliport> emptied_heliports <- [];
+ 		loop heliport over: heliports_to_evacuate {
+ 			int people_still_waiting <- heliport.people_with_no_assigned_vehicle;
+ 			loop while: people_still_waiting > 0 and !empty(helicopters_ready_to_go){
+ 				Helicopter selected_helicopter <- helicopters_ready_to_go with_max_of(each.capacity);
+		 		ask selected_helicopter {
+		 			self.target_infrastructure_agent <- heliport;
+		 			self.target_destination <- heliport.location;
+		 		}
+		 		helicopters_ready_to_go >- selected_helicopter;
+		 		people_still_waiting <- people_still_waiting - selected_helicopter.capacity;	
+		 		//write "DEBUG: " + string(time) + " - " + people_still_waiting;
+		 		heliport.people_with_no_assigned_vehicle <- people_still_waiting; 			
+ 			}
+ 			if people_still_waiting <= 0 {
+ 				emptied_heliports <+ Heliport(heliport);
+ 			} 			
+ 		}
+ 		loop heliport over: emptied_heliports {
+			heliports_to_evacuate >- Heliport(heliport);
+		}
+	}
+	else {
+		loop helicopter over: helicopters_ready_to_go {
+			ask helicopter {
+	 			self.target_infrastructure_agent <- hub;
+	 			self.target_destination <- hub.location;
+			}	
+		}
+	}
+}
  	
  	
  }
@@ -698,7 +761,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			if self in port_to_evacuate_from.people_waiting_list = false and boarded_vehicle = nil{
 				add self to: port_to_evacuate_from.people_waiting_list;
 				port_to_evacuate_from.people_with_no_assigned_vehicle <- port_to_evacuate_from.people_with_no_assigned_vehicle + 1;
-				//DEBUG: write port_to_evacuate_from.name + "-" + port_to_evacuate_from.people_waiting_list;
+				//write "DEBUG: " + port_to_evacuate_from.name + "-" + port_to_evacuate_from.people_waiting_list;
 			}
 		}
 	} 
@@ -793,7 +856,7 @@ species EvacuationVehicle skills: [moving] {
 	float cruising_speed;	
 	
 	reflex waiting when: waiting_people_to_board = true{
-		//DEBUG: write self.name + "- WAITING!"; //debug line
+		//write "DEBUG: " + self.name + "- WAITING!"; //debug line
 		waiting_time <- waiting_time + step;
 		if waiting_time > max_waiting_time {
 			write self.name + "- waited for too long. Going back to hub.";
@@ -847,7 +910,6 @@ species Ferry parent: EvacuationVehicle {
 	image_file ferry_icon;
 	
 	reflex ferry_update {
-		//TODO: add comunication from Protezione Civile
 		if evacuation_mode = true {
 			if people_on_board > 0 and ready_to_evacuate = false {
 				if location != hub_location {
@@ -927,7 +989,133 @@ species Ferry parent: EvacuationVehicle {
 		draw ferry_icon size: 1;
 	}
 }
-	//TODO: HELICOPTER
+	//HELICOPTER
+species Helicopter parent: EvacuationVehicle {
+	
+	image_file helicopter_icon;
+	
+	reflex helicopter_update {
+		if evacuation_mode = true {
+			if people_on_board > 0 and ready_to_evacuate = false {
+				if location != hub_location {
+					if flying = false {should_take_off <- true;} 
+					else{
+						do goto target: hub_location speed: cruising_speed;
+						if target_destination != hub_location {target_destination <- hub_location;}					
+					}
+				}
+				else {
+					if flying = true {should_land <- true;}
+					else {if should_unboard = false {should_unboard <- true;}}
+				}
+			}
+			else if people_on_board = 0 and ready_to_evacuate = false {
+				if safe = true and waited_for_too_long = false{
+					ready_to_evacuate <- true;
+					free_to_go <- false;
+				}
+				else if safe = false and waited_for_too_long = false{
+					if flying = false {should_take_off <- true;} 
+					else{do goto target: hub_location speed: cruising_speed;}
+				}
+				else if waited_for_too_long = true {
+					if flying = false {should_take_off <- true;} 
+					else{do goto target: hub_location speed: cruising_speed;}
+					free_info_transmitted <- false;
+					ready_to_evacuate <- true;
+				}
+			}
+			else if people_on_board >= 0 and ready_to_evacuate = true {
+				if people_on_board = 0 and free_info_transmitted = false{
+					ask CivilDefense {
+						if not (self.helicopters_ready_to_go contains myself) {
+							//DEBUG write "Ready to evacuate people!";
+							self.helicopters_ready_to_go <+ myself;
+						}
+					}
+					free_info_transmitted <- true;
+				}
+				if location != target_destination and target_destination != hub_location {
+					if flying = false {should_take_off <- true;} 
+					else{
+						do goto target: target_destination speed: speed;
+						if location distance_to target_destination < approach_distance and free_to_go = false {
+							//ask heliport whether it is free or not
+							speed <- 0.0;
+							ask target_infrastructure_agent {
+								if self.full = false {
+									myself.free_to_go <- true;
+									self.occupied_evacuation_spots <- self.occupied_evacuation_spots +1;
+								}
+								else if self.full = true {/*do nothing*/}
+							}
+							if safe = false {ready_to_evacuate <- false;}
+						}
+						if location distance_to target_destination < approach_distance and free_to_go = true {
+							speed <- cruising_speed;
+						}
+					}
+				}
+				else if location = target_destination and target_destination != hub_location {
+					if flying = true {should_land <- true;}
+					else {
+						should_board <- true;
+						speed <- 0.0;						
+					}
+				}
+				else if target_destination = hub_location {
+					/*wait for PC to tell where to go, in the meanwhile go to hub*/
+					if flying = false and self.location != hub_location{
+						should_take_off <- true;
+					}
+					else if flying = false and self.location = hub_location {}
+					else {
+						do goto target: target_destination speed: speed;
+						if location = hub_location {speed <- 0.0;}
+						else {if speed != cruising_speed {speed <- cruising_speed;}}					
+					}
+				}
+			}
+		}
+		else {do goto target: target_destination speed: speed;}
+	}
+	bool should_take_off <- false;
+	bool should_land <- false;
+	bool flying <- false;
+	float takeoff_avg_speed <- 5 #m/#s;
+	float landing_avg_speed <- 3 #m/#s;
+	float altitude <- 0.0 #m;
+	float cruising_altitude <- 150 #m; 
+	reflex taking_off when: should_take_off = true {
+		altitude <- altitude + takeoff_avg_speed*step;
+		//write "DEBUG: taking_off";
+		if altitude >= cruising_altitude {
+			altitude <- cruising_altitude;
+			speed <- cruising_speed;
+			flying <- true;
+			should_take_off <- false;
+		}
+	}
+	reflex landing when: should_land = true {
+		altitude <- altitude - takeoff_avg_speed*step;
+		//write "DEBUG: landing";
+		if altitude <= 0.0 #m {
+			altitude <- 0.0 #m;
+			speed <- 0.0 #km/#h;
+			flying<-false;
+			should_land <- false;
+		}
+	}
+	
+	reflex helicopter_safety_check {}
+	
+	aspect base {
+		draw triangle(300) rotate: heading + 90 color: #yellow;
+	}
+	aspect icon {
+		draw helicopter_icon size: 1;
+	}
+}
 
 experiment "show simulation" type: gui {     
     output {
@@ -940,6 +1128,7 @@ experiment "show simulation" type: gui {
 	       species Port;
 	       species Heliport;
 	       species Ferry aspect: base;
+	       species Helicopter aspect: base;
    	       species Volcano;
 	       species RoaringSoundEmission;
 	       species People;
@@ -958,6 +1147,7 @@ experiment "show simulation_with_charts" type: gui {
 	       species Port;
 	       species Heliport;
 	       species Ferry aspect: base;
+	       species Helicopter aspect: base;
    	       species Volcano;
 	       species RoaringSoundEmission;
 	       species People;
