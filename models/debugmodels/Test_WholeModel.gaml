@@ -119,7 +119,7 @@ global {
 		 /*
 		  * CREATING FERRIES AND HELICOPTERS
 		  */
-		create Ferry number: 5 {
+		create Ferry number: 2 {
 			//DEBUG: evacuation_mode <- true;
 			//DEBUG: ready_to_evacuate <- true;
 			safe <- true;
@@ -948,6 +948,7 @@ species Ferry parent: EvacuationVehicle {
 					free_info_transmitted <- true;
 				}
 				if location != target_destination and target_destination != hub_location {
+					if location = hub_location {speed<-cruising_speed;}
 					do goto target: target_destination speed: speed on: ferry_network;
 					if location distance_to target_destination < approach_distance and free_to_go = false {
 						//ask port whether it is free or not
