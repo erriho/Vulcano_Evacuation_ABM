@@ -107,7 +107,7 @@ global {
 		 /*
 		  * TODO: CREATING PEOPLE
 		  */
-		create People number: 50 {
+		create People number: 5000 {
 			speed <- 30 #km/#h;
 			location <- any_location_in(one_of(Roads));
      	 	//do add_desire(at_target_port);
