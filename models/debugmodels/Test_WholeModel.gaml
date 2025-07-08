@@ -110,8 +110,52 @@ global {
 		create People number: 50 {
 			speed <- 30 #km/#h;
 			location <- any_location_in(one_of(Roads));
-     	 	//do add_desire(at_target_port);
-     	 	do add_desire(enjoying_my_time);
+    	}
+    	//create social links
+    	bool there_are_people_left <- true;
+    	int people_with_assigned_friends <- 0;
+   		list<People> People_copy <- shuffle(People);
+    	loop while: !empty(People_copy) {
+    		int new_group_of_friend_size<-rnd(5,15);
+    		people_with_assigned_friends <- people_with_assigned_friends + new_group_of_friend_size;
+    		if people_with_assigned_friends >= length(People){
+    			//DEBUG: int temp_new_group_of_friend_size <- new_group_of_friend_size; 
+    			new_group_of_friend_size <- new_group_of_friend_size - (people_with_assigned_friends - length(People));
+	    		//DEBUG: people_with_assigned_friends <- people_with_assigned_friends-temp_new_group_of_friend_size+new_group_of_friend_size;
+    		}
+    		list<People> new_friends_circle;
+    		loop i over: range(new_group_of_friend_size-1){
+    			People new_friend <- one_of(People_copy);
+    			new_friends_circle <+ new_friend;
+    			People_copy >- new_friend;
+    		}
+  			list<People> new_friends_circle_copy;
+    		loop person over: new_friends_circle {
+    			new_friends_circle_copy <+ person;
+    		}
+    		loop person over: new_friends_circle {
+    			loop my_friend over: new_friends_circle_copy {
+    				ask person {
+    					social_link sl <- new_social_link(my_friend);
+    					do add_social_link(sl);
+    					sl <- set_liking(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
+    					sl <- set_dominance(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1)); 
+    					sl <- set_solidarity(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
+    					sl <- set_familiarity(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1)); 
+    					sl <- set_trust(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
+    				}
+    				ask my_friend{
+    					social_link sl <- new_social_link(person);
+    					do add_social_link(sl);
+    					sl <- set_liking(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
+    					sl <- set_dominance(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1)); 
+    					sl <- set_solidarity(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
+    					sl <- set_familiarity(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1)); 
+    					sl <- set_trust(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
+    				}
+    			}
+    			new_friends_circle_copy >- person;
+    		}
     	}
 		 /*
 		  * TODO: CREATING FORZE ORDINE
@@ -787,6 +831,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	//customiaztion variables	
 	rgb color <- #blue;
 	
+	//init
+	init {
+		do add_desire(enjoying_my_time);
+	}
+	
 	//TODO: MOVEMENT and EVACUATION
 	predicate enjoying_my_time <- new_predicate("enjoying my time");
 		
@@ -809,6 +858,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		} 
 	}
 	  
+	//TODO: SOCIAL LINKS
 
 	//TODO: EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
 
