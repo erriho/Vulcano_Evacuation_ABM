@@ -70,7 +70,7 @@ global {
         cycle <- cycle + 1;
     }
 
-    reflex end_simulation when: cycle > 30000 {
+    reflex end_simulation when: cycle > 80000 {
         do pause;
     }
 }
@@ -81,7 +81,8 @@ species civil_protection {
     bool assembly_order <- false;
 
     // Ordine extra eventuale dopo 200 tick
-    reflex send_assembly_order when: cycle = 2000 {
+    reflex send_assembly_order when: cycle = 50000 {
+    	write "TORNATEE";
         assembly_order <- true;
         ask forces {
             do remove_intention(block_trail, true);
@@ -181,7 +182,7 @@ species forces skills: [moving] control: simple_bdi {
                 
                 // Passo all'area di attesa
                 do remove_intention(block_trail, true);
-                do add_desire(go_to_assembly);
+                //do add_desire(go_to_assembly);
                 
                 }
         }
