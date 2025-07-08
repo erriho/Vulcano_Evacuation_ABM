@@ -5,7 +5,7 @@ global {
  // Global variables related to the Management units 
 	file island_shp <- file("../../includes/Shapefiles/Island/Vulcano_Island.shp");
 	file road_shp <- file("../../includes/Shapefiles/Roads/Vulcano_Roads_and_Paths_United_Cleaned.shp");
-	file Milazzo_route_shp <- file("../../includes/Shapefiles/Ferry_Routes/Vulcano_Milazzo.shp");
+	file Milazzo_route_shp <- file("../../includes/Shapefiles/Ferry_Routes/FerryRoutes.shp");
 	file buildings_shp <- file("../../includes/Shapefiles/Buildings/Vulcano_Buildings.shp");
 	file waiting_areas_shp <- file("../../includes/Shapefiles/WaitingAreas/AreeAttesa.shp");
  	file lafossa_crater_shp <- file("../../includes/Shapefiles/Craters/LaFossaCrater.shp");
@@ -29,7 +29,7 @@ global {
  	init {
 		create Island from: island_shp;
 		create Roads from: road_shp where (each != nil);
-		create Ferry_Route from: Milazzo_route_shp where (each != nil);
+		//create Ferry_Route from: Milazzo_route_shp where (each != nil);
 		create Buildings from: buildings_shp;
 		create Waiting_Areas from: waiting_areas_shp;
 		create Crater from: lafossa_crater_shp;
@@ -467,3 +467,5 @@ experiment show_map type: gui {
 			}
 		}
 }
+
+
