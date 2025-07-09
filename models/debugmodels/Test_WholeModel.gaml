@@ -2,7 +2,10 @@ model TestModel
 
 global {
 	//gloal variables
-	int evacuated_people;
+	int nb_humans_on_island;
+	int nb_people_to_evacuate;
+	int nb_evacuated_humans;
+	int nb_evacuated_people;
 	
 	//global variables needed to represent the world
 	graph road_network;
@@ -136,30 +139,42 @@ global {
     		}
     		loop person over: new_friends_circle {
     			loop my_friend over: new_friends_circle_copy {
-    				ask person {
-    					social_link sl <- new_social_link(my_friend);
-    					do add_social_link(sl);
-    					sl <- set_liking(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
-    					sl <- set_dominance(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1)); 
-    					sl <- set_solidarity(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
-    					sl <- set_familiarity(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1)); 
-    					sl <- set_trust(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
-    				}
-    				ask my_friend{
-    					social_link sl <- new_social_link(person);
-    					do add_social_link(sl);
-    					sl <- set_liking(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
-    					sl <- set_dominance(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1)); 
-    					sl <- set_solidarity(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
-    					sl <- set_familiarity(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1)); 
-    					sl <- set_trust(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
+    				if my_friend.name != person.name {    					
+	    				ask person {
+	    					social_link sl <- new_social_link(my_friend);
+	    					do add_social_link(sl);
+	    					sl <- set_liking(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
+	    					sl <- set_dominance(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1)); 
+	    					sl <- set_solidarity(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
+	    					sl <- set_familiarity(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1)); 
+	    					sl <- set_trust(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
+	    				}
+	    				ask my_friend{
+	    					social_link sl <- new_social_link(person);
+	    					do add_social_link(sl);
+	    					sl <- set_liking(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
+	    					sl <- set_dominance(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1)); 
+	    					sl <- set_solidarity(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
+	    					sl <- set_familiarity(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1)); 
+	    					sl <- set_trust(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
+	    				}
     				}
     			}
     			new_friends_circle_copy >- person;
     		}
     	}
+    	//adding information about friends
+    	loop person over: People {
+    		person.my_friends <- list<People>((person.social_link_base where (each.liking >= 0)) collect each.agent);
+    		loop friend over: person.my_friends {
+	    		map<string,unknown> my_friend_status <- ["name":: friend.name, "location"::friend.location, "status":: "unknown"];
+	    		ask person {
+	    			do add_belief(new_predicate("friend status", my_friend_status));	    			
+	    		}
+    		}
+    	}
 		 /*
-		  * TODO: CREATING FORZE ORDINE
+		  * TODO: CREATING LAW ENFORCEMENT AGENTS
 		  */
 		 /*
 		  * CREATING FERRIES AND HELICOPTERS
@@ -306,7 +321,7 @@ species EvacuationInfrastructure {
 				boarding_successful <- false;
 				/* person chooses whether to board*/
 				ask person {
-					bool decision <- bool(self.choose_whether_to_board());
+					bool decision <- bool(self.want_to_board());
 					boarding_successful <- decision;
 				}
 				if boarding_successful = true {
@@ -322,6 +337,8 @@ species EvacuationInfrastructure {
 				ask person {
 					self.boarded_vehicle <- EvacuationVehicle(vehicle); 
 					self.boarded <- true; //this will activate a reflex in the person agent that make it follow the vehicle
+					do add_belief(left_the_island);
+					self.communicated_my_status <- false;
 				}
 			}
 		}
@@ -342,8 +359,13 @@ species EvacuationInfrastructure {
 		}
 		loop person over: unboarded_people_list{
 			remove item: person from: people_on_board_list;
-			evacuated_people <- evacuated_people + 1;
-			ask person {do die;}
+			if People contains person {				
+				nb_evacuated_people <- nb_evacuated_people + 1;
+			}
+			nb_evacuated_humans <- nb_evacuated_humans + 1;
+			ask person {	
+				do die;
+			}
 		}
 		people_on_board <- people_on_board - unboarded_people;
 		return people_on_board;
@@ -792,6 +814,10 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  	// ISLAND EVACUATION
 	predicate at_target_port <- new_predicate("at target port"); 
 	predicate in_target_port <- new_predicate("in target port");
+	predicate left_the_island <- new_predicate("left the island");
+	bool communicated_my_status <- false;
+	predicate communicate_status <- new_predicate("communicate status");
+	predicate need_boarding_decision <- new_predicate("need to take a decision on whether to board");
 
 	perceive target: port_to_evacuate_from in: 10 #m {
 		ask myself{
@@ -815,16 +841,57 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				//write "DEBUG: " + port_to_evacuate_from.name + "-" + port_to_evacuate_from.people_waiting_list;
 			}
 		}
+		if location = port_to_evacuate_from.location and People contains self {
+			if self.communicated_my_status = false {
+				do add_subintention(get_current_intention(), communicate_status, true);		
+				do current_intention_on_hold();							
+			}
+		} 
 	} 
-	bool choose_whether_to_board {	
-		return flip(0.99);	
+	
+	bool want_to_board {
+		bool boarding_decision;
+		//people	
+		if People contains self {
+			People me <- People(self);
+			list<People> friends_I_worry_about <- list<People>((self.social_link_base where (each.liking > 0.8)) collect each.agent);
+			if !empty(friends_I_worry_about) {
+				list<predicate> my_friend_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
+				list<predicate> my_close_friends_statuses <- [];
+				loop close_friend over: friends_I_worry_about {
+					predicate close_friend_status <- my_friend_statuses first_with ((each).values["name"] = close_friend.name);
+					my_close_friends_statuses <+ close_friend_status; 
+				}			
+				loop cf_status over: my_close_friends_statuses {
+					if cf_status.values["status"] = 'unknown' {
+						//TODO: design this part
+						write self.name + " is waiting for " + cf_status.values["name"];
+						boarding_decision <- false;
+					}
+					else if cf_status.values["status"] = 'at port'{}
+					else if cf_status.values["status"] = 'rescuing'{}
+					else {
+						boarding_decision <- true;
+					}
+				} 
+			}
+			else {
+				boarding_decision <- true;				
+			}		
+		}
+		//LawEnforcement
+		else {
+			boarding_decision <- true;
+		}
+		return boarding_decision;	
 	}
 	
 	reflex on_board when: boarded = true { 
 		//speed <- boarded_vehicle.speed; 
 		//location <- boarded_vehicle.location; 
-		do goto target: boarded_vehicle.location speed: boarded_vehicle.speed on:ferry_network; //computed much faster
+		do goto target: boarded_vehicle.location speed: boarded_vehicle.speed on:ferry_network; //computes much faster
 	}
+	
  }
 /*
  * PEOPLE
@@ -865,6 +932,33 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	  
 	//TODO: SOCIAL LINKS
+	list<People> my_friends;
+	predicate friend_status;
+	
+	plan update_friends intention: communicate_status instantaneous: true {
+		if self.has_desire(in_target_port) {do update_status_to_my_friends("at port");}
+		else if self.has_belief(left_the_island) {do update_status_to_my_friends("on board");}
+		else if self.has_desire(going_rescue_someone) {do update_status_to_my_friends("rescuing");}
+		else if self.has_desire(waiting_for_someone) {do update_status_to_my_friends("waiting");}
+		//else if self.has_desire(in_waiting_area) {do update_status_to_my_friends("in waiting area");}}
+		do remove_intention(communicate_status, true);
+		self.communicated_my_status <- true;
+	}
+	
+	action update_status_to_my_friends(string status) {
+		loop friend over: my_friends {
+			ask friend {
+				list<predicate> my_friend_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
+				//write "DEBUG: " + my_friend_statuses;
+				predicate my_friend_status_about_me <- my_friend_statuses first_with ((each).values["name"] = myself.name);
+				//write "DEBUG: " + my_friend_status_about_me;
+				do remove_belief(my_friend_status_about_me);
+				map<string,unknown> my_status <- ["name":: myself.name, "location"::myself.location, "status":: status];
+				do add_belief(new_predicate("friend status", my_status));
+			}
+		}
+		//write "DEBUG: " + self.name + " has updated belief base of " + my_friends;
+	}
 
 	//TODO: EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
 
@@ -1250,8 +1344,8 @@ experiment "show simulation_with_charts" type: gui {
 		display Evacuation_Info refresh: every(120 #cycles) {
 	       //TODO: add a data series for people on board, update the people still to evacuate accordingly (also add something that counts the people at the beginning of the evacuation)
 	       chart "People evacuated successfully" type: series size: {1,0.5}{
-		       	data "People successfully evacuated" value: evacuated_people color: #blue;
-		       	data "People still to evacuate" value: (length(People)-evacuated_people) color: #red;
+		       	data "People successfully evacuated" value: nb_evacuated_people color: #blue;
+		       	data "People still to evacuate" value: (length(People) - nb_evacuated_people) color: #red;
 	       }			
 		}	       
 	}
