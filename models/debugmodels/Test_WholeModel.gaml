@@ -1,11 +1,27 @@
 model TestModel
 
 global {
-	//gloal variables
-	int nb_humans_on_island;
-	int nb_people_to_evacuate;
-	int nb_evacuated_humans;
-	int nb_evacuated_people;
+	//gloal variables for results
+		//evacuation variables
+	int nb_humans_on_island; //done
+	int nb_people_on_island; //done
+	int nb_humans_on_board;  //done
+	int nb_people_on_board;  //done
+	int nb_evacuated_humans; //done
+	int nb_evacuated_people; //done
+	//TODO: update the following in the code
+		//people status variables
+	int nb_people_warned;
+	int nb_people_prepared;
+	int nb_people_going_to_port;
+	int nb_people_waiting;
+	int nb_people_at_port;
+	int nb_people_rescuing_others;
+	int nb_people_who_left_the_island;
+		//people emotional status variable
+	int nb_joyous_people;
+	int nb_fearful_people;
+	int nb_alright_people;
 	
 	//global variables needed to represent the world
 	graph road_network;
@@ -105,7 +121,7 @@ global {
 		 */
 		 create CivilDefense number: 1{
 		 	name <- "Protezione Civile";
-		 	ITallert <- true;
+		 	ITalert <- true;
 		 }
 		 /*
 		  * CREATING PEOPLE
@@ -227,6 +243,8 @@ global {
 			location <- hub.location;
 			target_destination <- hub_location; 
 		}
+	nb_humans_on_island <-length(People)+length(LawEnforcement);
+	nb_people_on_island <-length(People);	
 	}
 }
 
@@ -340,6 +358,12 @@ species EvacuationInfrastructure {
 					do add_belief(left_the_island);
 					self.communicated_my_status <- false;
 				}
+				if People contains person {
+					nb_people_on_board <- nb_people_on_board +1;
+					nb_people_on_island <- nb_people_on_island - 1; 						
+				}
+				nb_humans_on_board <- nb_humans_on_board + 1;
+				nb_humans_on_island <- nb_humans_on_island - 1;
 			}
 		}
 		people_on_board <- people_on_board + boarded_people;
@@ -360,8 +384,10 @@ species EvacuationInfrastructure {
 		loop person over: unboarded_people_list{
 			remove item: person from: people_on_board_list;
 			if People contains person {				
+				nb_people_on_board <- nb_people_on_board - 1;
 				nb_evacuated_people <- nb_evacuated_people + 1;
 			}
+			nb_humans_on_board <- nb_humans_on_board - 1;
 			nb_evacuated_humans <- nb_evacuated_humans + 1;
 			ask person {	
 				do die;
@@ -459,13 +485,13 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	}
 	 	//people
  	list<People> alerted_people <- [];
- 	bool ITallert <- false; 
- 	float ITallert_issuance_time <- 0 #s;
- 	float time_needed_to_issue_ITallert <- 0 #s;
- 	reflex alert_people_with_ITallert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITallert = true {	
- 		ITallert_issuance_time <- ITallert_issuance_time + step; 
- 		if ITallert_issuance_time >= time_needed_to_issue_ITallert {
- 			write "(" + time + ")" + self.name + ": issued ITallert message.";
+ 	bool ITalert <- false; 
+ 	float ITalert_issuance_time <- 0 #s;
+ 	float time_needed_to_issue_ITalert <- 0 #s;
+ 	reflex alert_people_with_ITallert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITalert = true {	
+ 		ITalert_issuance_time <- ITalert_issuance_time + step; 
+ 		if ITalert_issuance_time >= time_needed_to_issue_ITalert {
+ 			write "(" + time + ")" + self.name + ": issued ITalert message.";
  			loop person over: People {
  				ask person {
  					do add_belief(evacuation_order);	 					
@@ -477,10 +503,11 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  		//law enforcement 	
  	//TODO: dirgli di evacuare
  	//TODO: dirgli di andare a fare patrol
- 	//TODO: dirgli di andare a zonzo ad allertare la gente (se ITallert è false)
- 	// TODO: MANAGING EVACUATION INFRASTRUCTURES 
+ 	//TODO: dirgli di andare a zonzo ad allertare la gente (se ITalert è false)
+ 	// MANAGING EVACUATION INFRASTRUCTURES 
 	list<Port> ports_to_evacuate;
-	float decision_time <- 600 #s;
+	float send_ferry_decision_time <- 600 #s;
+	float send_helicopter_decision_time <- 600 #s;
 	map<string,float> port_decision_time_map;
 	map<string,map> port_statuses;
  	reflex check_port_status {
@@ -503,7 +530,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  		loop port over: Port {
   			if (port.people_with_no_assigned_vehicle > 0 and port.viability = true) and not (ports_to_evacuate contains port){
   				port_decision_time_map[port.name] <- port_decision_time_map[port.name] + step; 
-  				if port_decision_time_map[port.name] > decision_time {
+  				if port_decision_time_map[port.name] > send_ferry_decision_time {
  					ports_to_evacuate <+ Port(port); 				
  				//string debug_name <- port.name; as much as it is weird, this line prevents a bug (not actually passing port), even though it is commented out 				
  				}
@@ -517,14 +544,13 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 		loop heliport over: Heliport {
   			if (heliport.people_with_no_assigned_vehicle > 0 and heliport.viability = true) and not (heliports_to_evacuate contains heliport){
   				heliport_decision_time_map[heliport.name] <- heliport_decision_time_map[heliport.name] + step; 
-  				if heliport_decision_time_map[heliport.name] > decision_time {
+  				if heliport_decision_time_map[heliport.name] > send_helicopter_decision_time {
  					heliports_to_evacuate <+ Heliport(heliport); 				
  				//string debug_name <- heliport.name; as much as it is weird, this line prevents a bug (not actually passing port), even though it is commented out 				
  				}
  			}
  		}
 	}
- 	
  	action update_infrstructure_viability {}
  	// MANAGING EVACUATION VEHICLES
  	list<Ferry> ferries_ready_to_go;
@@ -566,40 +592,38 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	}
  	
  	reflex tell_helicopters_where_to_go when: !empty(helicopters_ready_to_go) {
-	if !empty(heliports_to_evacuate) {
-	 	list<Heliport> emptied_heliports <- [];
- 		loop heliport over: heliports_to_evacuate {
- 			int people_still_waiting <- heliport.people_with_no_assigned_vehicle;
- 			loop while: people_still_waiting > 0 and !empty(helicopters_ready_to_go){
- 				Helicopter selected_helicopter <- helicopters_ready_to_go with_max_of(each.capacity);
-		 		ask selected_helicopter {
-		 			self.target_infrastructure_agent <- heliport;
-		 			self.target_destination <- heliport.location;
-		 		}
-		 		helicopters_ready_to_go >- selected_helicopter;
-		 		people_still_waiting <- people_still_waiting - selected_helicopter.capacity;	
-		 		//write "DEBUG: " + string(time) + " - " + people_still_waiting;
-		 		heliport.people_with_no_assigned_vehicle <- people_still_waiting; 			
- 			}
- 			if people_still_waiting <= 0 {
- 				emptied_heliports <+ Heliport(heliport);
- 			} 			
- 		}
- 		loop heliport over: emptied_heliports {
-			heliports_to_evacuate >- Heliport(heliport);
+		if !empty(heliports_to_evacuate) {
+		 	list<Heliport> emptied_heliports <- [];
+	 		loop heliport over: heliports_to_evacuate {
+	 			int people_still_waiting <- heliport.people_with_no_assigned_vehicle;
+	 			loop while: people_still_waiting > 0 and !empty(helicopters_ready_to_go){
+	 				Helicopter selected_helicopter <- helicopters_ready_to_go with_max_of(each.capacity);
+			 		ask selected_helicopter {
+			 			self.target_infrastructure_agent <- heliport;
+			 			self.target_destination <- heliport.location;
+			 		}
+			 		helicopters_ready_to_go >- selected_helicopter;
+			 		people_still_waiting <- people_still_waiting - selected_helicopter.capacity;	
+			 		//write "DEBUG: " + string(time) + " - " + people_still_waiting;
+			 		heliport.people_with_no_assigned_vehicle <- people_still_waiting; 			
+	 			}
+	 			if people_still_waiting <= 0 {
+	 				emptied_heliports <+ Heliport(heliport);
+	 			} 			
+	 		}
+	 		loop heliport over: emptied_heliports {
+				heliports_to_evacuate >- Heliport(heliport);
+			}
+		}
+		else {
+			loop helicopter over: helicopters_ready_to_go {
+				ask helicopter {
+		 			self.target_infrastructure_agent <- hub;
+		 			self.target_destination <- hub.location;
+				}	
+			}
 		}
 	}
-	else {
-		loop helicopter over: helicopters_ready_to_go {
-			ask helicopter {
-	 			self.target_infrastructure_agent <- hub;
-	 			self.target_destination <- hub.location;
-			}	
-		}
-	}
-}
- 	
- 	
  }
 /*
  * VOLCANO AGENT
@@ -865,6 +889,14 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				loop cf_status over: my_close_friends_statuses {
 					if cf_status.values["status"] = 'unknown' {
 						//TODO: design this part
+						/*
+						 * Dobbiamo decidere tante cose:
+						 * 1) Quali sono i possibili stati in generale
+						 * 2) Cosa fa propendere per un piano o l'altro
+						 * 3) Come si strutturano i vari piani
+						 * 4) Perché ste domande se le fa ora e non quando si è avvicinato al porto?
+						 */
+
 						write self.name + " is waiting for " + cf_status.values["name"];
 						boarding_decision <- false;
 					}
@@ -924,6 +956,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision;
 	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: at_target_port;
 	
+	
+	//TODO: aggiungere una fase di preparazione
+	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
 		//decision process
 		if flip(1) {
@@ -932,6 +967,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	  
 	//TODO: SOCIAL LINKS
+		//c'è solo da scegliere come inizializzarli, volendo fare un reflex per mostrare le reti sociali ma credo sia una perdita di tempo
 	list<People> my_friends;
 	predicate friend_status;
 	
@@ -976,7 +1012,6 @@ species LawEnforcement parent: Human{
 	rgb color <- #green;
 	point area_to_presidiate_location;
 	
-	predicate LawEnforcement_evacuation_order <- new_predicate("blabla evacuation order");
 	predicate block_access <- new_predicate("block access");
 	predicate reached_patrol_area <- new_predicate("reached patrol area");
 	predicate patrol <- new_predicate("patrol assigned area"); 
@@ -1342,11 +1377,17 @@ experiment "show simulation_with_charts" type: gui {
    	       species LawEnforcement;
 	    }
 		display Evacuation_Info refresh: every(120 #cycles) {
-	       //TODO: add a data series for people on board, update the people still to evacuate accordingly (also add something that counts the people at the beginning of the evacuation)
 	       chart "People evacuated successfully" type: series size: {1,0.5}{
-		       	data "People successfully evacuated" value: nb_evacuated_people color: #blue;
-		       	data "People still to evacuate" value: (length(People) - nb_evacuated_people) color: #red;
+		       	data "People successfully evacuated" value: nb_evacuated_people color: #green;
+		       	data "People on board" value: nb_people_on_board color: #blue;
+		       	data "People still to evacuate" value: nb_people_on_island color: #red;
+	       }
+	       chart "Humans evacuated successfully" type: series size: {2,0.5}{
+		       	data "Humans successfully evacuated" value: nb_evacuated_humans color: #green;
+		       	data "Humans on board" value: nb_humans_on_board color: #blue;
+		       	data "Humans still to evacuate" value: nb_humans_on_island color: #red;
 	       }			
+	       
 		}	       
 	}
 }
