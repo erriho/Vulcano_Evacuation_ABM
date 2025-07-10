@@ -3,6 +3,7 @@ model TestModel
 global {
 	//gloal variables
 	int evacuated_people;
+	int nb_people_on_island;
 	
 	//global variables needed to represent the world
 	graph road_network;
@@ -161,10 +162,17 @@ global {
 		 /*
 		  * TODO: CREATING FORZE ORDINE
 		  */
+		  create LawEnforcement number: 10 {
+			location <- any_location_in(one_of(road_network.vertices));
+			area_to_presidiate_location <- one_of(Waiting_Areas).location;
+			do add_desire(block_access); 		
+			speed <-  50#km/#h;	  	
+		  }
+		  
 		 /*
 		  * CREATING FERRIES AND HELICOPTERS
 		  */
-		create Ferry number: 2 {
+		create Ferry number: 6 {
 			//DEBUG: evacuation_mode <- true;
 			//DEBUG: ready_to_evacuate <- true;
 			safe <- true;
@@ -212,6 +220,8 @@ global {
 			location <- hub.location;
 			target_destination <- hub_location; 
 		}
+		
+	nb_people_on_island <- length(People);
 	}
 }
 
@@ -322,6 +332,9 @@ species EvacuationInfrastructure {
 				ask person {
 					self.boarded_vehicle <- EvacuationVehicle(vehicle); 
 					self.boarded <- true; //this will activate a reflex in the person agent that make it follow the vehicle
+				}
+				if People contains person {
+					nb_people_on_island <- nb_people_on_island -1;
 				}
 			}
 		}
@@ -439,7 +452,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	list<People> alerted_people <- [];
  	bool ITallert <- false; 
  	float ITallert_issuance_time <- 0 #s;
- 	float time_needed_to_issue_ITallert <- 0 #s;
+ 	float time_needed_to_issue_ITallert <- 500 #s;
  	reflex alert_people_with_ITallert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITallert = true {	
  		ITallert_issuance_time <- ITallert_issuance_time + step; 
  		if ITallert_issuance_time >= time_needed_to_issue_ITallert {
@@ -454,6 +467,18 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	}
  		//law enforcement 	
  	//TODO: dirgli di evacuare
+ 	list<LawEnforcement> alerted_law_enforcement <- []; 
+ 	reflex evacuate_law_enforcement when: nb_people_on_island = 0 and !empty(LawEnforcement - alerted_law_enforcement) {
+ 		loop person over: LawEnforcement {
+ 			ask person {
+ 				predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+ 				do remove_intention(current_person_intention , true);
+				do add_belief(evacuation_order);
+ 			}
+ 		}
+ 		alerted_law_enforcement <- list(LawEnforcement);
+ 	}
+ 	
  	//TODO: dirgli di andare a fare patrol
  	//TODO: dirgli di andare a zonzo ad allertare la gente (se ITallert è false)
  	// TODO: MANAGING EVACUATION INFRASTRUCTURES 
@@ -792,7 +817,8 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  	// ISLAND EVACUATION
 	predicate at_target_port <- new_predicate("at target port"); 
 	predicate in_target_port <- new_predicate("in target port");
-
+	predicate evacuation_order <- new_predicate("evacuation order");
+	
 	perceive target: port_to_evacuate_from in: 10 #m {
 		ask myself{
 			do remove_intention(at_target_port, true);
@@ -846,10 +872,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	predicate enjoying_my_time <- new_predicate("enjoying my time");
 		
 	plan lets_wander intention: enjoying_my_time {
-		do wander on: road_network;
+		do goto target: one_of(Waiting_Areas).location on: road_network;
 	}
 	
-	predicate evacuation_order <- new_predicate("evacuation order");
 	predicate need_evac_decision <- new_predicate("need to take a decision on whether to evacuate");
 	predicate going_to_port <- new_predicate("decided to go to port"); 
 	predicate going_rescue_someone <- new_predicate("decided to go rescue someone");
@@ -882,12 +907,23 @@ species LawEnforcement parent: Human{
 	rgb color <- #green;
 	point area_to_presidiate_location;
 	
-	predicate LawEnforcement_evacuation_order <- new_predicate("blabla evacuation order");
 	predicate block_access <- new_predicate("block access");
 	predicate reached_patrol_area <- new_predicate("reached patrol area");
 	predicate patrol <- new_predicate("patrol assigned area"); 
+	predicate see_person <- new_predicate("see person");
+	predicate warn_person <- new_predicate("warn person");
 	
 	rule belief: reached_patrol_area new_desire: patrol;
+	
+	perceive target: People in: view_dist {
+		focus id: "person seen" agent_cause: self;
+		People person_seen <- self; 
+		
+		ask myself{
+			//do add_belief(new_predicate("see person", self));
+			do add_belief(new_predicate("see person", ["person"::person_seen]));
+		}
+	}
 	
 	plan block_paths intention: block_access {
         do goto target: area_to_presidiate_location on: road_network;
@@ -898,16 +934,43 @@ species LawEnforcement parent: Human{
     }
 	
 	plan patrol_area intention: patrol {
+		if self.has_belief(see_person){
+			do add_subintention(get_current_intention(), warn_person, true);
+			do current_intention_on_hold();
+		}
+	}
+	
+	plan warn_people intention: warn_person {
+		predicate person_seen <- predicate(get_predicate(get_belief_with_name("see person")));
+		People person_to_warn <- person_seen.values["person"];
+		ask person_to_warn {
+			predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+			if current_person_intention  != at_target_port and current_person_intention != in_target_port{
+				write "DEBUG:" + myself.name + " - " + person_seen;
+				do remove_intention(current_person_intention , true);
+				do add_belief(going_to_port);
+			}
+		}
+		do remove_intention(warn_person, true);
+	}
+	
 		//se percepiscono persone, dirgli di fermarsi e andare al porto
 			//se le persone vanno già al porto li fa andare avanti
 		//per il resto stare fermi, fino a che PC dice di tornare indietri
 		// TODO: quando c'è contagio emoozionale, fai che rassicura gli spaventati (o qualcosa del genere)
-	}
+	
 	
 	//TODO: alert people of evacuation (alternativa ad IT allert)
 	
 	//TODO: evacuate
+	predicate evacuate <- new_predicate("evacuate");
+	rule belief: evacuation_order new_desire: evacuate;
 	
+	plan evacuate intention: evacuate {
+		list<EvacuationInfrastructure> PortsHeliports <- list(Port) + list(Heliport);
+		do goto target: PortsHeliports closest_to(self) on: road_network;
+		//TODO: fai che i poliziotti si aggiungano alla lista eliporti
+	}
 	
     aspect default {
         draw circle(20) color: color border: #black;
