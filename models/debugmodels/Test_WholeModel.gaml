@@ -130,6 +130,7 @@ global {
 			speed <- 30 #km/#h;
 			view_dist <- 30 #m;
 			location <- any_location_in(one_of(Roads));
+			total_preparing_time <- truncated_gauss({600, 300})#s;
     	}
     	//create social links
     	bool there_are_people_left <- true;
@@ -524,6 +525,16 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	}
  	//TODO: dirgli di andare a fare patrol
  	//TODO: dirgli di andare a zonzo ad allertare la gente (se ITalert è false)
+ 	bool evac_order_was_given <- false;
+ 	reflex order_LEAs_to_give_evac_order when: evac_order_was_given = false and issue_evacuation_order = true and ITalert = false{
+ 		loop person over: LawEnforcement {
+ 			ask person {
+ 				predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+ 				do remove_intention(current_person_intention , true);
+				do add_desire(alert_population);
+ 			}
+ 		}
+ 	}
  	// MANAGING EVACUATION INFRASTRUCTURES 
 	list<Port> ports_to_evacuate;
 	float send_ferry_decision_time <- 600 #s;
@@ -980,11 +991,30 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	predicate going_to_port <- new_predicate("decided to go to port"); 
 	predicate going_rescue_someone <- new_predicate("decided to go rescue someone");
 	predicate waiting_for_someone <- new_predicate("decided to wait for someone");
+	predicate preparing <- new_predicate("preparing to evacuate");
+	float time_spent_preparing <- 0 #s;
+	float total_preparing_time <- 600 #s;
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision;
-	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: at_target_port;
-	
+	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing;
 	
 	//TODO: aggiungere una fase di preparazione
+		/*
+		 * L'idea è un po' questa, una volta che decido cosa fare dopo aver ricevuto l'ordine di evacuazione:
+		 * - spendo del tempo a prepararmi
+		 * - questo tempo è da inizializzare in create come in Bonadonna
+		 * - sarà aumentato o diminuito di un coefficiente a seconda della cosa scelta (se scelgo di andare a cercare qualcuno ci metto di più)
+		 * - trascorso questo tempo farà la cosa che ha deciso di fare
+		 */
+	plan prepare intention: preparing {
+		time_spent_preparing <- time_spent_preparing + step;
+		if time_spent_preparing >= total_preparing_time {
+			if self.has_belief(going_to_port) {
+				do remove_desire(preparing);
+				do add_desire(at_target_port);
+			}
+		}
+		
+	}
 	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
 		//decision process
@@ -1068,7 +1098,7 @@ species LawEnforcement parent: Human{
 		ask person_to_warn {
 			predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
 			if current_person_intention  != at_target_port and current_person_intention != in_target_port{
-				write "DEBUG:" + myself.name + " - " + person_seen;
+				//write "DEBUG:" + myself.name + " - " + person_seen;
 				do remove_intention(current_person_intention , true);
 				do add_belief(going_to_port);
 			}
@@ -1077,8 +1107,72 @@ species LawEnforcement parent: Human{
 	}
 	// TODO: quando c'è contagio emoozionale, fai che rassicura gli spaventati (o qualcosa del genere)
 	
+	//alert people of evacuation 
+	float alert_destination_min_distance <- 500 #m;
+	float alert_population_radius <- 150 #m;
+	predicate alert_population <- new_predicate("alert population");
+	predicate perceived_person_to_alert <- new_predicate("perceived person to alert");
+	predicate alert_person <- new_predicate("alert person");
+	predicate already_alerted_person <- new_predicate("already alerted person");
 	
-	//TODO: alert people of evacuation (alternativa ad IT allert)
+	plan alert_population_of_evacuation_order intention: alert_population {
+		predicate current_target <- new_predicate("current target");
+
+		if !(self.has_belief(current_target)) { 
+			point target; 
+			loop while: target = nil or target distance_to(self) < alert_destination_min_distance {
+				target <- any(road_network.vertices);
+			}
+			do add_belief(new_predicate("current target", ["destination"::target]));							
+			}
+		
+		predicate target_belief <- predicate(get_predicate(get_belief_with_name("current target")));
+		point target_location <- target_belief.values["destination"];
+		do goto target: target_location on: road_network;
+
+		if self.has_belief(perceived_person_to_alert) {
+			do add_subintention(get_current_intention(), alert_person, true);
+			do current_intention_on_hold();
+		}
+		
+		if (self.location = target_location) {
+			do remove_belief(current_target);
+		}
+	}
+	
+		perceive target: People in: alert_population_radius  {
+		list<predicate> already_alerted_person_people_beliefs_list <- myself.get_beliefs_with_name("already alerted person") collect (predicate(get_predicate(mental_state (each))));
+		list<predicate> perceived_people_beliefs_list <- myself.get_beliefs_with_name("perceived person to alert") collect (predicate(get_predicate(mental_state (each))));
+		focus id: "peson perceived" agent_cause: self;
+		People perceived_person <- self; 
+		bool person_already_alerted_by_someone <- false;
+		if empty(already_alerted_person_people_beliefs_list where (each.values["person"]=perceived_person)) {
+			if perceived_person.has_belief(evacuation_order){
+				//write "DEBUG: " + self.name + "was already alerted.";
+				person_already_alerted_by_someone <- true;	
+				ask myself {
+					predicate to_alert_perceived_person_belief <- perceived_people_beliefs_list first_with (each.values["person"] = perceived_person);
+					do remove_belief(to_alert_perceived_person_belief);
+					do add_belief(new_predicate("already alerted person", ["person"::perceived_person]));
+				}
+			}
+			if person_already_alerted_by_someone = false {
+				ask myself{
+					do add_belief(new_predicate("perceived person to alert", ["person"::perceived_person]));
+				}			
+			}
+		}
+	}	
+
+	plan must_alert_person intention: alert_person {
+		list<predicate> perceived_people_beliefs_list <- get_beliefs_with_name("perceived person to alert") collect (predicate(get_predicate(mental_state (each))));
+		loop belief over: perceived_people_beliefs_list {
+			predicate person_to_alert_belief <- belief;
+			People person_to_alert <- person_to_alert_belief.values["person"];
+			ask person_to_alert {do add_belief(evacuation_order);}
+		}
+		do remove_intention(alert_person, true);
+	}
 	
 	//EVACUATION
 	predicate evacuate <- new_predicate("evacuate");
