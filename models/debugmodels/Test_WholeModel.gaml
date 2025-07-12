@@ -11,13 +11,13 @@ global {
 	int nb_evacuated_people; //done
 	//TODO: update the following in the code
 		//people status variables
-	int nb_people_warned;
-	int nb_people_prepared;
-	int nb_people_going_to_port;
-	int nb_people_waiting;
-	int nb_people_at_port;
-	int nb_people_rescuing_others;
-	int nb_people_who_left_the_island;
+	int nb_people_warned; //done 
+	int nb_people_prepared; //done
+	int nb_people_going_to_port; //done (missing belief removal, for this and all the following, at least the temporary ones)
+	int nb_people_rescuing_others; //done
+	int nb_people_waiting; //done
+	int nb_people_at_port; //missing belief
+	int nb_people_who_left_the_island; //done
 		//people emotional status variable
 	int nb_joyous_people;
 	int nb_fearful_people;
@@ -685,6 +685,12 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	
  	reflex monitor_evacuation_status when: issue_evacuation_order {
  		nb_people_warned <- length(People where (each.has_belief(predicate(each.evacuation_order))));
+		nb_people_prepared <- length(People where (each.has_belief(predicate(each.prepared_to_evacuate))));
+		nb_people_going_to_port <- length(People where (each.has_belief(predicate(each.going_to_port))));
+		nb_people_rescuing_others <- length(People where (each.has_belief(predicate(each.going_rescue_someone))));
+		nb_people_waiting <- length(People where (each.has_belief(predicate(each.waiting_for_someone))));
+		nb_people_at_port <- length(People where (each.has_belief(predicate(each.in_target_port))));
+		nb_people_who_left_the_island <- length(People where (each.has_belief(predicate(each.left_the_island))));
  	} 
  	
  	// MANAGING EVACUATION INFRASTRUCTURES 
@@ -1144,6 +1150,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	predicate going_rescue_someone <- new_predicate("decided to go rescue someone");
 	predicate waiting_for_someone <- new_predicate("decided to wait for someone");
 	predicate preparing <- new_predicate("preparing to evacuate");
+	predicate prepared_to_evacuate <- new_predicate("prepared to evacuate");
 	float time_spent_preparing <- 0 #s;
 	float total_preparing_time <- 600 #s;
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision;
@@ -1163,6 +1170,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			if self.has_belief(going_to_port) {
 				do remove_desire(preparing);
 				do add_desire(at_target_port);
+				do add_belief(prepared_to_evacuate);
 			}
 		}
 		
@@ -1358,10 +1366,23 @@ species LawEnforcement parent: Human{
 		}	
 	}
 	
+	
     aspect default {
-        draw circle(20) color: color border: #black;
-        draw circle(view_dist) color: color border: #black wireframe: true;
+    	
+		if has_intention_op(self, predicate("patrol assigned area")) {			
+			draw circle(10) rotate: heading + 90 color: #yellow;
+			draw circle(view_dist) color: #yellow border: #black wireframe: true;
+		}
+		else if has_intention_op(self, predicate("alert population")) {
+			draw triangle(10) rotate: heading + 90 color: #yellow;
+			draw circle(alert_population_radius) color: rgb(1,0,0,0.3);
+		} 
+    	else {
+    		draw triangle(10) rotate: heading + 90 color: color;
+    		draw circle(view_dist) color: color border: #black wireframe: true;
+    	}
     }
+    
 }
 /*
  *  EVACUTION VEHICLES: ferries, helicopters
