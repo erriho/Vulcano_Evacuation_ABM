@@ -103,7 +103,7 @@ global {
 		 */
 		 create CivilDefense number: 1{
 		 	name <- "Protezione Civile";
-		 	ITallert <- true;
+		 	ITallert <- false;
 		 }
 		 /*
 		  * CREATING PEOPLE
@@ -165,7 +165,8 @@ global {
 		  create LawEnforcement number: 10 {
 			location <- any_location_in(one_of(road_network.vertices));
 			area_to_presidiate_location <- one_of(Waiting_Areas).location;
-			do add_desire(block_access); 		
+			//do add_desire(block_access);
+			do add_desire(IT_alert); 		
 			speed <-  50#km/#h;	  	
 		  }
 		  
@@ -481,6 +482,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	
  	//TODO: dirgli di andare a fare patrol
  	//TODO: dirgli di andare a zonzo ad allertare la gente (se ITallert è false)
+ 	
  	// TODO: MANAGING EVACUATION INFRASTRUCTURES 
 	list<Port> ports_to_evacuate;
 	float decision_time <- 600 #s;
@@ -912,6 +914,9 @@ species LawEnforcement parent: Human{
 	predicate patrol <- new_predicate("patrol assigned area"); 
 	predicate see_person <- new_predicate("see person");
 	predicate warn_person <- new_predicate("warn person");
+	predicate IT_alert <- new_predicate("IT alert");
+	predicate see_person_brum <- new_predicate("see person brum");
+	predicate warn_person_brum <- new_predicate("warn person brum");
 	
 	rule belief: reached_patrol_area new_desire: patrol;
 	
@@ -952,6 +957,65 @@ species LawEnforcement parent: Human{
 			}
 		}
 		do remove_intention(warn_person, true);
+	}
+	
+	plan warn_people_brum intention: warn_person_brum {
+		predicate person_seen_brum <- predicate(get_predicate(get_belief_with_name("see person brum")));
+		People person_to_warn_brum <- person_seen_brum.values["person brum"];
+		ask person_to_warn_brum {
+			write self.name +"avvertito";
+			do add_belief(evacuation_order);
+		}
+		do remove_intention(warn_person_brum, true);
+	}
+	
+	
+		
+	perceive target: People in: 30 #m  {
+		focus id: "person seen brum" agent_cause: self;
+		People person_seen_brum <- self; 
+			write myself.name + "baluga" + self.name;
+			bool person_already_warned <- false;
+		if person_seen_brum.has_belief(evacuation_order){
+			write "GIà AVVERTITO";
+			person_already_warned <- true;
+			
+		}
+		if person_already_warned = false {
+			ask myself{
+					//do add_belief(new_predicate("see person", self));
+				do add_belief(new_predicate("see person brum", ["person brum"::person_seen_brum]));
+				}			
+		}
+	}	
+	
+	plan IT_alert_alternative intention: IT_alert {
+		predicate random_point <- new_predicate("move to random point");
+		
+	// Se non hai già una destinazione, scegline una casuale
+		//list<predicate> target_list <- get_beliefs_with_name("move to random point") collect (predicate(get_predicate(mental_state (each))));
+		//if empty(target_list) {
+		if !(self.has_belief(random_point)) { 
+			point target <- any(road_network.vertices); // seleziona un nodo casuale
+			do add_belief(new_predicate("move to random point", ["destination"::target]));			
+			}
+		
+	// Vai verso il punto casuale
+		predicate move_target <- predicate(get_predicate(get_belief_with_name("move to random point")));
+		point target_point <- move_target.values["destination"];
+		do goto target: target_point on: road_network;
+
+	// Se sei arrivato, scegli un nuovo punto
+		if (self.location = target_point)   {
+			do remove_belief(random_point);
+		}
+
+	// Se vedi una persona, avvisa
+		if self.has_belief(see_person_brum) {
+			write "sticazzi";
+			do add_subintention(get_current_intention(), warn_person_brum, true);
+			do current_intention_on_hold();
+		}
 	}
 	
 		//se percepiscono persone, dirgli di fermarsi e andare al porto
