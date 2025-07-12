@@ -56,7 +56,17 @@ global {
 	map roaring_sound_emission_map <- [
 		"lambda" :: 1000
 	];
+	
+		//civil defense
+	map caramba <- [
+		"presidiate" :: 20,
+		"should_create_if_missing" :: false
+	];
+	
 		//people
+	float preparing_time_avg <- 600 #s;
+	float preparing_time_std <- 300 #s;
+		
 	/*
 	 * ASPECT CUSTOMIZATION
 	 */
@@ -129,8 +139,10 @@ global {
 		create People number: 50 {
 			speed <- 30 #km/#h;
 			view_dist <- 30 #m;
-			location <- any_location_in(one_of(Roads));
-			total_preparing_time <- truncated_gauss({600, 300})#s;
+			if flip(1/2) {location <- any_location_in(one_of(Buildings));}
+			else {location <- any_location_in(one_of(Roads));}
+			//total_preparing_time <- truncated_gauss({preparing_time_avg, preparing_time_std})#s;
+			total_preparing_time <- 0 #s;
     	}
     	//create social links
     	bool there_are_people_left <- true;
@@ -1187,7 +1199,7 @@ species LawEnforcement parent: Human{
 	rule belief: evacuation_order new_desire: evacuate;
 	
 	plan evacuate intention: evacuate {
-		write "DEBUG: " + self.name + "Leaving Island.";
+		//write "DEBUG: " + self.name + "Leaving Island.";
 		list<EvacuationInfrastructure> PortsHeliports <- list(Port) + list(Heliport);
 		place_to_evacuate_from <- PortsHeliports closest_to(self);
 		do goto target: place_to_evacuate_from on: road_network;
