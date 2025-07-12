@@ -190,12 +190,18 @@ global {
     		}
     	}
 		 /*
-		  * TODO: CREATING LAW ENFORCEMENT AGENTS
+		  * CREATING LAW ENFORCEMENT AGENTS
 		  */
+		create LawEnforcement number: 10 {
+			location <- any_location_in(one_of(road_network.vertices));
+			speed <-  50#km/#h;	  	
+			area_to_presidiate_location <- one_of(Waiting_Areas).location;
+			do add_desire(block_access); 		
+		}
 		 /*
 		  * CREATING FERRIES AND HELICOPTERS
 		  */
-		create Ferry number: 2 {
+		create Ferry number: 4 {
 			//DEBUG: evacuation_mode <- true;
 			//DEBUG: ready_to_evacuate <- true;
 			safe <- true;
@@ -501,7 +507,21 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  		}
  	}
  		//law enforcement 	
- 	//TODO: dirgli di evacuare
+ 	list<LawEnforcement> alerted_law_enforcement <- []; 
+ 	reflex evacuate_law_enforcement when: nb_people_on_island = 0 and !empty(LawEnforcement - alerted_law_enforcement) {
+ 		write "Civil Defense: Told LEAs to leave."; 
+ 		loop person over: LawEnforcement {
+ 			ask person {
+ 				//list<predicate> current_person_believes <- get_beliefs collect (predicate(get_predicate(mental_state (each))));
+ 				predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+ 				do remove_intention(current_person_intention , true);
+ 				do remove_all_beliefs;
+				do add_belief(evacuation_order);
+ 			}
+ 			write person.name + person.belief_base + person.intention_base;
+ 		}
+ 		alerted_law_enforcement <- list(LawEnforcement);
+ 	}
  	//TODO: dirgli di andare a fare patrol
  	//TODO: dirgli di andare a zonzo ad allertare la gente (se ITalert è false)
  	// MANAGING EVACUATION INFRASTRUCTURES 
@@ -531,7 +551,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
   			if (port.people_with_no_assigned_vehicle > 0 and port.viability = true) and not (ports_to_evacuate contains port){
   				port_decision_time_map[port.name] <- port_decision_time_map[port.name] + step; 
   				if port_decision_time_map[port.name] > send_ferry_decision_time {
- 					ports_to_evacuate <+ Port(port); 				
+ 					ports_to_evacuate <+ Port(port); 
  				//string debug_name <- port.name; as much as it is weird, this line prevents a bug (not actually passing port), even though it is commented out 				
  				}
  			}
@@ -574,7 +594,6 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 	 			}
 	 			if people_still_waiting <= 0 {
 	 				emptied_ports <+ Port(port);
-	 				
 	 			} 			
 	 		}
 	 		loop port over: emptied_ports {
@@ -826,16 +845,20 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  * HUMAN SPECIES
  */
  species Human skills: [moving] control: simple_bdi{
-	bool use_emotions_architecture <- true; //per attivare processo emozionale automatico 
-	bool use_social_architecture <- true;
+	init {
+		use_emotions_architecture <- true; 
+		use_social_architecture <- true;		
+	}
 	//enviornment-related variables
 	float view_dist;
 	//boarding-related variables
+	EvacuationInfrastructure place_to_evacuate_from;
 	Port port_to_evacuate_from;
 	bool decided_to_board;
 	EvacuationVehicle boarded_vehicle <- nil;
 	bool boarded <- false;
  	// ISLAND EVACUATION
+	predicate evacuation_order <- new_predicate("evacuation order");
 	predicate at_target_port <- new_predicate("at target port"); 
 	predicate in_target_port <- new_predicate("in target port");
 	predicate left_the_island <- new_predicate("left the island");
@@ -849,6 +872,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			do add_desire(in_target_port);
 		}
 	}
+	
 	plan go_to_nearest_port intention: at_target_port {
 		port_to_evacuate_from <- Port closest_to(self);
 		do goto target: port_to_evacuate_from on: road_network;
@@ -898,10 +922,14 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 						 */
 
 						write self.name + " is waiting for " + cf_status.values["name"];
-						boarding_decision <- false;
+						boarding_decision <- true;
 					}
-					else if cf_status.values["status"] = 'at port'{}
-					else if cf_status.values["status"] = 'rescuing'{}
+					else if cf_status.values["status"] = 'at port'{
+						boarding_decision <- true;
+					}
+					else if cf_status.values["status"] = 'rescuing'{
+						boarding_decision <- true;
+					}
 					else {
 						boarding_decision <- true;
 					}
@@ -948,7 +976,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		do wander on: road_network;
 	}
 	
-	predicate evacuation_order <- new_predicate("evacuation order");
 	predicate need_evac_decision <- new_predicate("need to take a decision on whether to evacuate");
 	predicate going_to_port <- new_predicate("decided to go to port"); 
 	predicate going_rescue_someone <- new_predicate("decided to go rescue someone");
@@ -1015,8 +1042,10 @@ species LawEnforcement parent: Human{
 	predicate block_access <- new_predicate("block access");
 	predicate reached_patrol_area <- new_predicate("reached patrol area");
 	predicate patrol <- new_predicate("patrol assigned area"); 
+	predicate see_person <- new_predicate("see person");
+	predicate warn_person <- new_predicate("warn person");
 	
-	rule belief: reached_patrol_area new_desire: patrol;
+	rule belief: reached_patrol_area new_desire: patrol when: !(self.has_belief(evacuation_order));
 	
 	plan block_paths intention: block_access {
         do goto target: area_to_presidiate_location on: road_network;
@@ -1027,16 +1056,60 @@ species LawEnforcement parent: Human{
     }
 	
 	plan patrol_area intention: patrol {
-		//se percepiscono persone, dirgli di fermarsi e andare al porto
-			//se le persone vanno già al porto li fa andare avanti
-		//per il resto stare fermi, fino a che PC dice di tornare indietri
-		// TODO: quando c'è contagio emoozionale, fai che rassicura gli spaventati (o qualcosa del genere)
+		if self.has_belief(see_person){
+			do add_subintention(get_current_intention(), warn_person, true);
+			do current_intention_on_hold();
+		}
 	}
+	
+	plan warn_people intention: warn_person {
+		predicate person_seen <- predicate(get_predicate(get_belief_with_name("see person")));
+		People person_to_warn <- person_seen.values["person"];
+		ask person_to_warn {
+			predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+			if current_person_intention  != at_target_port and current_person_intention != in_target_port{
+				write "DEBUG:" + myself.name + " - " + person_seen;
+				do remove_intention(current_person_intention , true);
+				do add_belief(going_to_port);
+			}
+		}
+		do remove_intention(warn_person, true);
+	}
+	// TODO: quando c'è contagio emoozionale, fai che rassicura gli spaventati (o qualcosa del genere)
+	
 	
 	//TODO: alert people of evacuation (alternativa ad IT allert)
 	
-	//TODO: evacuate
+	//EVACUATION
+	predicate evacuate <- new_predicate("evacuate");
+	predicate lets_leave <- new_predicate("lets_leave");
 	
+	perceive target: place_to_evacuate_from in: 10 #m {
+		ask myself{
+			do remove_intention(evacuate, true);
+			do add_desire(lets_leave);
+		}
+	}
+	rule belief: evacuation_order new_desire: evacuate;
+	
+	plan evacuate intention: evacuate {
+		write "DEBUG: " + self.name + "Leaving Island.";
+		list<EvacuationInfrastructure> PortsHeliports <- list(Port) + list(Heliport);
+		place_to_evacuate_from <- PortsHeliports closest_to(self);
+		do goto target: place_to_evacuate_from on: road_network;
+	}
+	
+	plan wait_to_leave_island intention: lets_leave {
+		if location != place_to_evacuate_from.location {
+			do goto target: place_to_evacuate_from on: road_network;
+		}
+		else {
+			if self in place_to_evacuate_from.people_waiting_list = false and boarded_vehicle = nil{
+				add self to: place_to_evacuate_from.people_waiting_list;
+				place_to_evacuate_from.people_with_no_assigned_vehicle <- place_to_evacuate_from.people_with_no_assigned_vehicle + 1;
+			}
+		}	
+	}
 	
     aspect default {
         draw circle(20) color: color border: #black;
@@ -1089,6 +1162,7 @@ species EvacuationVehicle skills: [moving] {
 			waited_for_too_long <- true;
 			ask target_infrastructure_agent {
 				self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;
+				self.people_with_no_assigned_vehicle <- self.people_with_no_assigned_vehicle + myself.capacity - myself.people_on_board;
 			}
 		}
 	}
