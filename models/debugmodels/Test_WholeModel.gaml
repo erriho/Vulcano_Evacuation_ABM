@@ -508,7 +508,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  			}
 		}
  	}
- 	// TODO: EVACUATION ORDER (missing forze dell'ordine)
+ 	// EVACUATION ORDER 
  	bool issue_evacuation_order <- false;
  	float time_needed_to_issue_evac_order <- 0 #s;
  		//ferries and helicopers
