@@ -809,6 +809,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  species Human skills: [moving] control: simple_bdi{
 	bool use_emotions_architecture <- true; //per attivare processo emozionale automatico 
 	bool use_social_architecture <- true;
+	bool use_personality <- true;
+	
+	
 	//enviornment-related variables
 	float view_dist;
 	//boarding-related variables
@@ -864,10 +867,17 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	//customiaztion variables	
 	rgb color <- #blue;
-	
+	float openness <- /*1.0;*/gauss(0.5,0.12);
+	float conscientiousness <- /*1.0;*/gauss(0.5,0.12); 
+	float extroversion <- /*1.0;*/gauss(0.5,0.12);
+	float agreeableness <- /*1.0;*/gauss(0.5,0.12);
+	float neurotism <- /*1.0;*/gauss(0.5,0.12);
 	//init
+	predicate noHazard <- new_predicate("hazard", false);
+	predicate hazardHeard <- new_predicate("hazard"); 
 	init {
 		do add_desire(enjoying_my_time);
+		do add_desire(noHazard, 1.0);
 	}
 	
 	//TODO: MOVEMENT and EVACUATION
@@ -908,6 +918,12 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 species LawEnforcement parent: Human{
 	rgb color <- #green;
 	point area_to_presidiate_location;
+	
+	float openness <- /*1.0;*/gauss(0.4,0.12);
+	float conscientiousness <- /*1.0;*/gauss(0.8,0.12); 
+	float extroversion <- /*1.0;*/gauss(0.7,0.12);
+	float agreeableness <- /*1.0;*/gauss(0.5,0.12);
+	float neurotism <- /*1.0;*/gauss(0.2,0.12);
 	
 	predicate block_access <- new_predicate("block access");
 	predicate reached_patrol_area <- new_predicate("reached patrol area");
