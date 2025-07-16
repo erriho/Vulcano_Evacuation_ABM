@@ -704,7 +704,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 	map<string,map> port_statuses;
  	reflex check_port_status {
  		/*
- 		 //this piece of code was commented out as it is not needed at the momen
+ 		 //this piece of code was commented out as it is not needed at the moment
  		map<string,map> old_port_statuses <- port_statuses;
  		map<string,map> new_port_statuses;
  		port_statuses <- [];
@@ -1021,7 +1021,8 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  species Human skills: [moving] control: simple_bdi{
 	init {
 		use_emotions_architecture <- true; 
-		use_social_architecture <- true;		
+		use_social_architecture <- true;	
+		use_personality <- true;	
 	}
 	//enviornment-related variables
 	float view_dist;
@@ -1143,6 +1144,13 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	//init
 	init {
 		do add_desire(enjoying_my_time);
+		do add_desire(noEruption, 1.0);
+		
+		openness <- /*1.0;*/gauss(0.5,0.12);	
+		conscientiousness <- /*1.0;*/gauss(0.5,0.12); 
+		extroversion <- /*1.0;*/gauss(0.5,0.12);
+		agreeableness <- /*1.0;*/gauss(0.5,0.12);
+		neurotism <- /*1.0;*/gauss(0.5,0.12);
 	}
 	
 	//TODO: MOVEMENT and EVACUATION
@@ -1153,6 +1161,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	
 	predicate need_evac_decision <- new_predicate("need to take a decision on whether to evacuate");
+	predicate took_evac_decision <- new_predicate("took an evacuation decision");
 	predicate going_to_port <- new_predicate("decided to go to port"); 
 	predicate going_rescue_someone <- new_predicate("decided to go rescue someone");
 	predicate waiting_for_someone <- new_predicate("decided to wait for someone");
@@ -1245,9 +1254,13 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
 		//decision process
-
-		//come si può attivare l'uno o l'altro? Ci si basa sulla personalità e/o l'emozione? 
-
+		if self.has_emotion(fearEruption) {
+			float fear_intensity <- get_intensity(get_emotion(fearEruption));
+			if fear_intensity >= 0.6 {
+				//TODO: make this line into a plan
+				do goto target: closest_to(EvacuationInfrastructure,self) on: road_network;
+			}
+		}
 		if flip(1) {
 			do add_belief(going_to_port);
 		} 
@@ -1262,6 +1275,8 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		}	
 		* 
 		*/
+		int decision_lifetime <- int(max([300#s/step,1200#s/step*conscientiousness]));
+		do add_belief(took_evac_decision, 1.0, decision_lifetime);
 	}
 	//TODO: SOCIAL LINKS
 		//c'è solo da scegliere come inizializzarli, volendo fare un reflex per mostrare le reti sociali ma credo sia una perdita di tempo
@@ -1294,20 +1309,102 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		//write "DEBUG: " + self.name + " has updated belief base of " + my_friends;
 	}
 
+	//TODO: EMOTIONs
+	emotion joyPort <- new_emotion("joy", in_target_port);
+	//Ilaria: SE SONO AL PORTO E VOGLIO ESSERE AL PORTO SONO FELICE, E COSA FACCIO SE SONO FELICE?
+		//Enrico: secondo me niente, farei solo che se sei felice contagi gli altri calmando la paura se ti percepiscono
+	//Ilaria: CI SAREBBE DA AGGIUNGERE HAPPY FOR E SORRY FOR 
+		//Enrico: sono d'accordo, ma forse non è immediato, ci penso su
+	
 	//TODO: EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
-	int perceived_boom_intensity <- 0;
+	int max_perceived_boom_intensity <- 18; //TODO: make this value dependent also on personality (we could do so in the reflex so to leave this parameter on its own)
+	float perceived_boom_coefficient <- 0.0;
 	predicate boomHeard <- new_predicate("Boom");
 	
 	reflex update_intensity when: self.has_belief(boomHeard) {
-		perceived_boom_intensity <- 0;
+		int perceived_boom_intensity <- 0;
+		perceived_boom_coefficient <- 0.0;
 		list<predicate> boom_bf_list <- get_beliefs_with_name("Boom") collect (predicate(get_predicate(mental_state (each))));
 		loop belief over: boom_bf_list {
 			int single_intensity <- int(belief.values["intensity"]);
 			//write "DEBUG: " + get_lifetime(one_of(get_belief_with_name("Boom")));
 			perceived_boom_intensity <- perceived_boom_intensity + single_intensity; 
+			if perceived_boom_intensity >= max_perceived_boom_intensity {
+				perceived_boom_intensity <- max_perceived_boom_intensity;
+				break;
+			}
+			perceived_boom_coefficient <- perceived_boom_intensity/max_perceived_boom_intensity;
 		}
 		//write "DEBUG: " + perceived_boom_intensity;
 	}
+	
+	predicate noEruption <- new_predicate("Eruption",false);
+	predicate Eruption <- new_predicate("Eruption");
+	emotion fearEruption <- new_emotion("fear", Eruption);
+
+	rule belief: boomHeard new_uncertainty:Eruption strength: perceived_boom_coefficient when: not has_belief(Eruption);
+	rule emotion:fearEruption new_desire: need_evac_decision remove_intention:enjoying_my_time remove_desire:enjoying_my_time;
+
+	//TODO: EMOTIONAL CONTAGION
+
+	float uncertaintyConversion <- 0.25;
+
+		perceive target:People in:view_dist{
+
+		if(has_belief(Eruption) and not myself.has_belief(Eruption)){
+
+			focus id:"Eruption" strength: uncertaintyConversion is_uncertain:true;
+
+//			ask myself{
+
+//				do add_uncertainty(predicate:fireSaw,strength: uncertaintyConversion);
+
+//			}
+
+		}
+
+	}		
+
+	
+
+	float contagionThreshold <- 0.5 parameter: true;
+
+	People perceivedOther <- nil;
+
+	perceive target: People in:view_dist parallel:false{
+		emotional_contagion emotion_detected:fearEruption threshold:contagionThreshold;
+		/*
+		 * POSSIBILE ESPANSIONE DEL MODELLO, se ci chiede in quali direzioni possiamo andare
+		 * socialize trust:gauss(0.0,0.33);
+		myself.perceivedOther<-self;
+		enforcement norm: "followOthers" sanction: "trustSanction" reward: "trustReward";
+		* 
+		*/
+	}
+	/*
+	 * vedi sopra
+	sanction trustSanction{
+		do change_trust(perceivedOther,-0.1);
+	}
+	sanction trustReward{
+		do change_trust(perceivedOther,0.1);
+	}
+	/* perceive target:LawEnforcement in:view_dist parallel:false{
+		emotional_contagion emotion_detected:joy threshold:contagionThreshold;
+		socialize trust:gauss(0.0,0.33);
+		myself.perceivedOther<-self;
+		enforcement norm: "followOthers" sanction: "trustSanction" reward: "trustReward";
+	}
+
+	sanction trustSanction{
+		do change_trust(perceivedOther,-0.1);
+	}
+	* 
+	
+	sanction trustReward{
+		do change_trust(perceivedOther,0.1);
+	} 
+	VORREI CHE QUESTO FOSSE UN MODO PER CALMARSI QUANDO SI VEDONO LE FORSE DELL'ORDINE */
 
 	//TODO: EMOTIONAL CONTAGION
 
