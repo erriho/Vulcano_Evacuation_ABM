@@ -103,7 +103,7 @@ global {
 		 */
 		 create CivilDefense number: 1{
 		 	name <- "Protezione Civile";
-		 	ITallert <- false;
+		 	ITalert <- false;
 		 }
 		 /*
 		  * CREATING PEOPLE
@@ -166,7 +166,7 @@ global {
 			location <- any_location_in(one_of(road_network.vertices));
 			area_to_presidiate_location <- one_of(Waiting_Areas).location;
 			//do add_desire(block_access);
-			do add_desire(IT_alert); 		
+			//do add_desire(alert_population); 		
 			speed <-  50#km/#h;	  	
 		  }
 		  
@@ -451,10 +451,10 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	}
 	 	//people
  	list<People> alerted_people <- [];
- 	bool ITallert <- false; 
+ 	bool ITalert <- false; 
  	float ITallert_issuance_time <- 0 #s;
  	float time_needed_to_issue_ITallert <- 500 #s;
- 	reflex alert_people_with_ITallert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITallert = true {	
+ 	reflex alert_people_with_ITallert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITalert = true {	
  		ITallert_issuance_time <- ITallert_issuance_time + step; 
  		if ITallert_issuance_time >= time_needed_to_issue_ITallert {
  			write "(" + time + ")" + self.name + ": issued ITallert message.";
@@ -482,6 +482,16 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	
  	//TODO: dirgli di andare a fare patrol
  	//TODO: dirgli di andare a zonzo ad allertare la gente (se ITallert è false)
+ 	bool evac_order_was_given <- false;
+ 	reflex order_LEAs_to_give_evac_order when: evac_order_was_given = false and issue_evacuation_order = true and ITalert = false{
+ 		loop person over: LawEnforcement {
+ 			ask person {
+ 				predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+ 				do remove_intention(current_person_intention , true);
+				do add_desire(alert_population);
+ 			}
+ 		}
+ 	}
  	
  	// TODO: MANAGING EVACUATION INFRASTRUCTURES 
 	list<Port> ports_to_evacuate;
@@ -896,6 +906,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
 		//decision process
+		write self.name + "me ne vado";
 		if flip(1) {
 			do add_belief(going_to_port);
 		} 
@@ -930,9 +941,6 @@ species LawEnforcement parent: Human{
 	predicate patrol <- new_predicate("patrol assigned area"); 
 	predicate see_person <- new_predicate("see person");
 	predicate warn_person <- new_predicate("warn person");
-	predicate IT_alert <- new_predicate("IT alert");
-	predicate see_person_brum <- new_predicate("see person brum");
-	predicate warn_person_brum <- new_predicate("warn person brum");
 	
 	rule belief: reached_patrol_area new_desire: patrol;
 	
@@ -975,64 +983,78 @@ species LawEnforcement parent: Human{
 		do remove_intention(warn_person, true);
 	}
 	
-	plan warn_people_brum intention: warn_person_brum {
-		predicate person_seen_brum <- predicate(get_predicate(get_belief_with_name("see person brum")));
-		People person_to_warn_brum <- person_seen_brum.values["person brum"];
-		ask person_to_warn_brum {
-			write self.name +"avvertito";
-			do add_belief(evacuation_order);
-		}
-		do remove_intention(warn_person_brum, true);
-	}
+	//TODO: alert people of evacuation (alternativa ad IT allert)
+	float alert_destination_min_distance <- 500 #m;
+	float alert_population_radius <- 150 #m;
+	predicate alert_population <- new_predicate("alert population");
+	predicate perceived_person_to_alert <- new_predicate("perceived person to alert");
+	predicate alert_person <- new_predicate("alert person");
+	predicate already_alerted_person <- new_predicate("already alerted person");
 	
-	
-		
-	perceive target: People in: 30 #m  {
-		focus id: "person seen brum" agent_cause: self;
-		People person_seen_brum <- self; 
-			write myself.name + "baluga" + self.name;
-			bool person_already_warned <- false;
-		if person_seen_brum.has_belief(evacuation_order){
-			write "GIà AVVERTITO";
-			person_already_warned <- true;
-			
-		}
-		if person_already_warned = false {
-			ask myself{
-					//do add_belief(new_predicate("see person", self));
-				do add_belief(new_predicate("see person brum", ["person brum"::person_seen_brum]));
-				}			
-		}
-	}	
-	
-	plan IT_alert_alternative intention: IT_alert {
-		predicate random_point <- new_predicate("move to random point");
-		
-	// Se non hai già una destinazione, scegline una casuale
-		//list<predicate> target_list <- get_beliefs_with_name("move to random point") collect (predicate(get_predicate(mental_state (each))));
-		//if empty(target_list) {
-		if !(self.has_belief(random_point)) { 
-			point target <- any(road_network.vertices); // seleziona un nodo casuale
-			do add_belief(new_predicate("move to random point", ["destination"::target]));			
+	plan alert_population_of_evacuation_order intention: alert_population {
+		predicate current_target <- new_predicate("current target");
+
+		if !(self.has_belief(current_target)) { 
+			point target; 
+			loop while: target = nil or target distance_to(self) < alert_destination_min_distance {
+				target <- any(road_network.vertices);
+			}
+			do add_belief(new_predicate("current target", ["destination"::target]));							
 			}
 		
-	// Vai verso il punto casuale
-		predicate move_target <- predicate(get_predicate(get_belief_with_name("move to random point")));
-		point target_point <- move_target.values["destination"];
-		do goto target: target_point on: road_network;
+		predicate target_belief <- predicate(get_predicate(get_belief_with_name("current target")));
+		point target_location <- target_belief.values["destination"];
+		do goto target: target_location on: road_network;
 
-	// Se sei arrivato, scegli un nuovo punto
-		if (self.location = target_point)   {
-			do remove_belief(random_point);
-		}
-
-	// Se vedi una persona, avvisa
-		if self.has_belief(see_person_brum) {
-			write "sticazzi";
-			do add_subintention(get_current_intention(), warn_person_brum, true);
+		if self.has_belief(perceived_person_to_alert) {
+			do add_subintention(get_current_intention(), alert_person, true);
 			do current_intention_on_hold();
 		}
+		
+		if (self.location = target_location) {
+			do remove_belief(current_target);
+		}
 	}
+	
+	perceive target: People in: alert_population_radius  {
+		list<predicate> already_alerted_person_people_beliefs_list <- myself.get_beliefs_with_name("already alerted person") collect (predicate(get_predicate(mental_state (each))));
+		list<predicate> perceived_people_beliefs_list <- myself.get_beliefs_with_name("perceived person to alert") collect (predicate(get_predicate(mental_state (each))));
+		focus id: "peson perceived" agent_cause: self;
+		People perceived_person <- self; 
+		bool person_already_alerted_by_someone <- false;
+		if empty(already_alerted_person_people_beliefs_list where (each.values["person"]=perceived_person)) {
+			if perceived_person.has_belief(evacuation_order){
+				//write "DEBUG: " + self.name + "was already alerted.";
+				person_already_alerted_by_someone <- true;	
+				ask myself {
+					predicate to_alert_perceived_person_belief <- perceived_people_beliefs_list first_with (each.values["person"] = perceived_person);
+					do remove_belief(to_alert_perceived_person_belief);
+					do add_belief(new_predicate("already alerted person", ["person"::perceived_person]));
+				}
+			}
+			if person_already_alerted_by_someone = false {
+				ask myself{
+					do add_belief(new_predicate("perceived person to alert", ["person"::perceived_person]));
+				}			
+			}
+		}
+	}	
+
+	plan must_alert_person intention: alert_person {
+		list<predicate> perceived_people_beliefs_list <- get_beliefs_with_name("perceived person to alert") collect (predicate(get_predicate(mental_state (each))));
+		write "LISTONE: " + perceived_people_beliefs_list;
+		loop belief over: perceived_people_beliefs_list {
+			predicate person_to_alert_belief <- belief;
+			People person_to_alert <- person_to_alert_belief.values["person"];
+			write "DA AVVERTIRE" + person_to_alert;
+			ask person_to_alert {
+				write self.name +"avvertito";
+				do add_belief(evacuation_order);
+			}
+		}
+		do remove_intention(alert_person, true);
+	}
+	
 	
 		//se percepiscono persone, dirgli di fermarsi e andare al porto
 			//se le persone vanno già al porto li fa andare avanti
@@ -1040,7 +1062,6 @@ species LawEnforcement parent: Human{
 		// TODO: quando c'è contagio emoozionale, fai che rassicura gli spaventati (o qualcosa del genere)
 	
 	
-	//TODO: alert people of evacuation (alternativa ad IT allert)
 	
 	//TODO: evacuate
 	predicate evacuate <- new_predicate("evacuate");
@@ -1055,6 +1076,7 @@ species LawEnforcement parent: Human{
     aspect default {
         draw circle(20) color: color border: #black;
         draw circle(view_dist) color: color border: #black wireframe: true;
+        draw circle(alert_population_radius) color: rgb(1,0,0,0.4);
     }
 }
 /*

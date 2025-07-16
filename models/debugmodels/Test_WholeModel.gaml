@@ -11,13 +11,13 @@ global {
 	int nb_evacuated_people; //done
 	//TODO: update the following in the code
 		//people status variables
-	int nb_people_warned;
-	int nb_people_prepared;
-	int nb_people_going_to_port;
-	int nb_people_waiting;
-	int nb_people_at_port;
-	int nb_people_rescuing_others;
-	int nb_people_who_left_the_island;
+	int nb_people_warned; //done 
+	int nb_people_prepared; //done
+	int nb_people_going_to_port; //done (missing belief removal, for this and all the following, at least the temporary ones)
+	int nb_people_rescuing_others; //done
+	int nb_people_waiting; //done
+	int nb_people_at_port; //missing belief
+	int nb_people_who_left_the_island; //done
 		//people emotional status variable
 	int nb_joyous_people;
 	int nb_fearful_people;
@@ -56,7 +56,24 @@ global {
 	map roaring_sound_emission_map <- [
 		"lambda" :: 1000
 	];
+	
+		//civil defense
+	bool ITalert_glob <- true;
+	map glob_manage_LEAs_map <- [
+		"give evacuation order" :: 20,
+		"backup" :: manage_LEAs_backups_map 
+	];
+	map manage_LEAs_backups_map <- [
+		"should create backups" :: true,
+		"location":: "any_port",
+		"number":: 50,
+		"arrival time":: 6000 #s
+	];
+	
 		//people
+	float preparing_time_avg <- 600 #s;
+	float preparing_time_std <- 300 #s;
+		
 	/*
 	 * ASPECT CUSTOMIZATION
 	 */
@@ -121,7 +138,7 @@ global {
 		 */
 		 create CivilDefense number: 1{
 		 	name <- "Protezione Civile";
-		 	ITalert <- true;
+		 	ITalert <- ITalert_glob;
 		 }
 		 /*
 		  * CREATING PEOPLE
@@ -129,7 +146,10 @@ global {
 		create People number: 50 {
 			speed <- 30 #km/#h;
 			view_dist <- 30 #m;
-			location <- any_location_in(one_of(Roads));
+			if flip(1/2) {location <- any_location_in(one_of(Buildings));}
+			else {location <- any_location_in(one_of(Roads));}
+			//total_preparing_time <- truncated_gauss({preparing_time_avg, preparing_time_std})#s;
+			total_preparing_time <- 0 #s;
     	}
     	//create social links
     	bool there_are_people_left <- true;
@@ -190,12 +210,27 @@ global {
     		}
     	}
 		 /*
-		  * TODO: CREATING LAW ENFORCEMENT AGENTS
+		  * CREATING LAW ENFORCEMENT AGENTS
 		  */
+		create LawEnforcement number: 40 {
+			float location_extraction <- rnd(1.0);
+			if location_extraction <= 0.80 {
+				float port_location_extraction <- rnd(1.0);
+				if port_location_extraction <= 0.80 {location <- (first_with(Port,each.name = "Porto di Levante")).location;}
+				else if port_location_extraction <= 0.80 + 0.15 {location <- (first_with(Port,each.name = "Molo di protezione civile di Gelso")).location;}
+				else {location <- (first_with(Port,each.name = "Molo di protezione civile di Ponente")).location;}
+			}
+			else if location_extraction <= 0.80 + 0.0 {/*TODO: add caserma dei carabinieri*/}
+			else {location <- any_location_in(one_of(road_network.vertices));}
+			speed <-  50#km/#h;	  	
+			//area_to_presidiate_location <- one_of(Waiting_Areas).location;
+			//do add_desire(block_access); 		
+			do add_desire(on_duty_regular);
+		}
 		 /*
 		  * CREATING FERRIES AND HELICOPTERS
 		  */
-		create Ferry number: 2 {
+		create Ferry number: 4 {
 			//DEBUG: evacuation_mode <- true;
 			//DEBUG: ready_to_evacuate <- true;
 			safe <- true;
@@ -463,13 +498,17 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  		LaFossa_activity_level <- LaFossa.activity_level;	
  		if LaFossa_activity_level = 2 and issue_evacuation_order = false{
  			evac_order_issuance_time <- evac_order_issuance_time + step; 
+ 			if evac_order_issuance_time > time_needed_to_issue_LEA_order {
+ 				write self.name + ": evacuation order issued to LEAs.";
+ 				issue_LEAs_order <- true;
+ 			} 
   			if evac_order_issuance_time >= time_needed_to_issue_evac_order {
   				write self.name + ": evacuation order issued.";
  				issue_evacuation_order <- true;
  			}
 		}
  	}
- 	// TODO: EVACUATION ORDER (missing forze dell'ordine)
+ 	// EVACUATION ORDER 
  	bool issue_evacuation_order <- false;
  	float time_needed_to_issue_evac_order <- 0 #s;
  		//ferries and helicopers
@@ -501,9 +540,159 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  		}
  	}
  		//law enforcement 	
- 	//TODO: dirgli di evacuare
- 	//TODO: dirgli di andare a fare patrol
- 	//TODO: dirgli di andare a zonzo ad allertare la gente (se ITalert è false)
+ 	list<LawEnforcement> alerted_law_enforcement <- []; 
+ 	reflex evacuate_law_enforcement when: nb_people_on_island = 0 and !empty(LawEnforcement - alerted_law_enforcement) {
+ 		write self.name + ": LEAs must evacuate now."; 
+ 		loop person over: LawEnforcement {
+ 			ask person {
+ 				//list<predicate> current_person_believes <- get_beliefs collect (predicate(get_predicate(mental_state (each))));
+ 				predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+ 				do remove_intention(current_person_intention , true);
+ 				do remove_all_beliefs;
+				do add_belief(evacuation_order);
+ 			}
+ 			write person.name + person.belief_base + person.intention_base;
+ 		}
+ 		alerted_law_enforcement <- list(LawEnforcement);
+ 	}
+	//LAW ENFORCEMENT AGENTS MANAGEMENT
+	bool issue_LEAs_order <- false;
+ 	float time_needed_to_issue_LEA_order <- 0 #s;
+ 	map<string,unknown> manage_LEAs_map <- glob_manage_LEAs_map;
+ 	int ordering_evac_LEAs_nb;
+ 	bool should_create_backups;
+ 	unknown backup_init_location;
+ 	int backup_init_nb;
+ 	float backup_waiting_time <- 0.0 #s;
+ 	float backup_arrival_time;
+ 	init {
+	 	if ITalert = false {ordering_evac_LEAs_nb <- int(manage_LEAs_map["give evacuation order"]);}
+ 		should_create_backups <- bool(manage_LEAs_map["backup"]["should create backups"]); 	
+ 		if should_create_backups {
+ 			backup_init_location <- string(manage_LEAs_map["backup"]["location"]);
+ 			backup_init_nb <- int(manage_LEAs_map["backup"]["number"]);
+ 			backup_arrival_time <- float(manage_LEAs_map["backup"]["arrival time"]);
+ 		}
+ 	} 
+ 	reflex create_backups when: should_create_backups {
+ 		backup_waiting_time <- backup_waiting_time + step;
+ 		if backup_waiting_time >= backup_arrival_time {
+ 			LEAs_order_was_fulfilled <- false;
+ 			if backup_init_nb > 0 {
+	 			create LawEnforcement number: backup_init_nb {
+					if flip(0.8) {location <- (first_with(Port,each.name = "Porto di Levante")).location;}
+					else {location <- (first_with(Port,each.name = "Molo di protezione civile di Gelso")).location;}
+	 			} 				
+	 			write "DEBUG: backups created.";
+ 			}
+ 				
+ 			should_create_backups <- false;
+ 		}
+ 	}
+ 	
+ 	list<LawEnforcement> patroling_LEAs;
+ 	list<LawEnforcement> ordering_evac_LEAs;
+ 	list<agent> covered_areas <- [];
+ 	list<agent> ports_on_island <- Port where(each.name != "Porto di Milazzo");
+ 	list<agent> heliports_on_island <- Heliport where(!contains(["Nave 1", "Ospedale di Milazzo", "ZAE Cratere"], each.name));
+ 	list<agent> areas_to_cover <- ports_on_island + list(Waiting_Areas) + heliports_on_island;
+ 	bool LEAs_order_was_fulfilled <- false;
+ 	reflex order_LEAs_to_patrol_designated_areas when: issue_LEAs_order and LEAs_order_was_fulfilled = false {
+ 		list<LawEnforcement> available_LEAs <- LawEnforcement - patroling_LEAs - ordering_evac_LEAs;
+ 		list<LawEnforcement> available_LEAs_copy; 
+ 		loop while: LEAs_order_was_fulfilled = false {
+ 			//Assign LEAs to patrol areas 
+	 		if !empty(areas_to_cover - covered_areas) {
+	 			list<agent> covered_areas_temp;
+		 		loop area_to_patrol over: (list(areas_to_cover) - covered_areas) {
+		 			list<LawEnforcement> LEAs_to_dispatch;
+		 			if length(available_LEAs) > 2*length(list(areas_to_cover)) {LEAs_to_dispatch <- available_LEAs closest_to(area_to_patrol, 2);}
+		 			else {LEAs_to_dispatch <- available_LEAs closest_to(area_to_patrol, 1);}
+		 			loop LEA over: LEAs_to_dispatch {	 				
+		 				ask LEA {
+			 				predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+			 				do remove_intention(current_person_intention, true);
+		 					area_to_presidiate_location <- area_to_patrol.location;
+		 					do add_desire(block_access);
+		 					
+		 				}
+		 				available_LEAs >- LEA;
+		 				patroling_LEAs <+ LEA;
+		 			}
+		 			covered_areas_temp <+ area_to_patrol;
+		 			if empty(available_LEAs) {
+		 				LEAs_order_was_fulfilled <- true;
+		 				break;
+		 			}
+		 		}
+		 		loop area over: covered_areas_temp {covered_areas <+ area;}
+	 		}
+	 		//Assign LEAs to patrol areas if there are LEAs remaining
+	 		else {
+	 			if length(ordering_evac_LEAs)>=ordering_evac_LEAs_nb or ITalert = true {
+		 			available_LEAs <- LawEnforcement - patroling_LEAs - ordering_evac_LEAs;
+		 			available_LEAs_copy <- [];
+		 			loop LEA over: available_LEAs{available_LEAs_copy <+ LEA;}
+		 			loop LEA over: available_LEAs_copy {
+		 				agent area_to_patrol <- one_of(areas_to_cover);  
+		 				ask LEA {
+			 				predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+			 				do remove_intention(current_person_intention, true);
+		 					area_to_presidiate_location <- area_to_patrol.location;
+		 					do add_desire(block_access);
+			 			}
+		 				available_LEAs >- LEA;
+		 				patroling_LEAs <+ LEA;
+		 			}
+	 				LEAs_order_was_fulfilled <- true;
+ 				}
+	 		}
+ 			available_LEAs <- LawEnforcement - patroling_LEAs - ordering_evac_LEAs;
+			available_LEAs_copy <- [];
+			loop LEA over: available_LEAs{available_LEAs_copy <+ LEA;}
+			//Assign LEAs to issue evacuation order
+	 		if ITalert = false and length(ordering_evac_LEAs)<ordering_evac_LEAs_nb {
+	 			loop LEA over: available_LEAs_copy {
+		 			ask LEA {
+		 				predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+		 				do remove_intention(current_person_intention, true);
+						do add_desire(alert_population);
+		 			}	 				
+	 				available_LEAs >- LEA;
+	 				ordering_evac_LEAs <+ LEA;
+		 			if length(ordering_evac_LEAs)=ordering_evac_LEAs_nb {break;}
+	 			}
+	 			if empty(available_LEAs) {
+	 				LEAs_order_was_fulfilled <- true;
+	 				break;
+	 			}
+	 		}
+ 		}	
+ 	}
+ 	bool everybody_is_alerted <- false;
+ 	reflex switch_from_evac_order_to_patrol when: ITalert = false and !everybody_is_alerted and nb_people_warned = length(People) {
+		write self.name + ": LEAs who were issuing evacuation order must go patroling.";
+		loop LEA over: ordering_evac_LEAs{
+			ask LEA {
+ 				predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+ 				do remove_intention(current_person_intention, true);
+				area_to_presidiate_location <- (myself.areas_to_cover closest_to self).location;
+				do add_desire(block_access);
+ 			}
+		}
+ 		everybody_is_alerted <- true;
+ 	}
+ 	
+ 	reflex monitor_evacuation_status when: issue_evacuation_order {
+ 		nb_people_warned <- length(People where (each.has_belief(predicate(each.evacuation_order))));
+		nb_people_prepared <- length(People where (each.has_belief(predicate(each.prepared_to_evacuate))));
+		nb_people_going_to_port <- length(People where (each.has_belief(predicate(each.going_to_port))));
+		nb_people_rescuing_others <- length(People where (each.has_belief(predicate(each.going_rescue_someone))));
+		nb_people_waiting <- length(People where (each.has_belief(predicate(each.waiting_for_someone))));
+		nb_people_at_port <- length(People where (each.has_belief(predicate(each.in_target_port))));
+		nb_people_who_left_the_island <- length(People where (each.has_belief(predicate(each.left_the_island))));
+ 	} 
+ 	
  	// MANAGING EVACUATION INFRASTRUCTURES 
 	list<Port> ports_to_evacuate;
 	float send_ferry_decision_time <- 600 #s;
@@ -512,7 +701,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 	map<string,map> port_statuses;
  	reflex check_port_status {
  		/*
- 		 //this piece of code was commented out as it is not needed at the moment
+ 		 //this piece of code was commented out as it is not needed at the momen
  		map<string,map> old_port_statuses <- port_statuses;
  		map<string,map> new_port_statuses;
  		port_statuses <- [];
@@ -531,7 +720,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
   			if (port.people_with_no_assigned_vehicle > 0 and port.viability = true) and not (ports_to_evacuate contains port){
   				port_decision_time_map[port.name] <- port_decision_time_map[port.name] + step; 
   				if port_decision_time_map[port.name] > send_ferry_decision_time {
- 					ports_to_evacuate <+ Port(port); 				
+ 					ports_to_evacuate <+ Port(port); 
  				//string debug_name <- port.name; as much as it is weird, this line prevents a bug (not actually passing port), even though it is commented out 				
  				}
  			}
@@ -574,7 +763,6 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 	 			}
 	 			if people_still_waiting <= 0 {
 	 				emptied_ports <+ Port(port);
-	 				
 	 			} 			
 	 		}
 	 		loop port over: emptied_ports {
@@ -826,16 +1014,20 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  * HUMAN SPECIES
  */
  species Human skills: [moving] control: simple_bdi{
-	bool use_emotions_architecture <- true; //per attivare processo emozionale automatico 
-	bool use_social_architecture <- true;
+	init {
+		use_emotions_architecture <- true; 
+		use_social_architecture <- true;		
+	}
 	//enviornment-related variables
 	float view_dist;
 	//boarding-related variables
+	EvacuationInfrastructure place_to_evacuate_from;
 	Port port_to_evacuate_from;
 	bool decided_to_board;
 	EvacuationVehicle boarded_vehicle <- nil;
 	bool boarded <- false;
  	// ISLAND EVACUATION
+	predicate evacuation_order <- new_predicate("evacuation order");
 	predicate at_target_port <- new_predicate("at target port"); 
 	predicate in_target_port <- new_predicate("in target port");
 	predicate left_the_island <- new_predicate("left the island");
@@ -849,6 +1041,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			do add_desire(in_target_port);
 		}
 	}
+	
 	plan go_to_nearest_port intention: at_target_port {
 		port_to_evacuate_from <- Port closest_to(self);
 		do goto target: port_to_evacuate_from on: road_network;
@@ -898,10 +1091,14 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 						 */
 
 						write self.name + " is waiting for " + cf_status.values["name"];
-						boarding_decision <- false;
+						boarding_decision <- true;
 					}
-					else if cf_status.values["status"] = 'at port'{}
-					else if cf_status.values["status"] = 'rescuing'{}
+					else if cf_status.values["status"] = 'at port'{
+						boarding_decision <- true;
+					}
+					else if cf_status.values["status"] = 'rescuing'{
+						boarding_decision <- true;
+					}
 					else {
 						boarding_decision <- true;
 					}
@@ -948,16 +1145,36 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		do wander on: road_network;
 	}
 	
-	predicate evacuation_order <- new_predicate("evacuation order");
 	predicate need_evac_decision <- new_predicate("need to take a decision on whether to evacuate");
 	predicate going_to_port <- new_predicate("decided to go to port"); 
 	predicate going_rescue_someone <- new_predicate("decided to go rescue someone");
 	predicate waiting_for_someone <- new_predicate("decided to wait for someone");
+	predicate preparing <- new_predicate("preparing to evacuate");
+	predicate prepared_to_evacuate <- new_predicate("prepared to evacuate");
+	float time_spent_preparing <- 0 #s;
+	float total_preparing_time <- 600 #s;
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision;
-	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: at_target_port;
-	
+	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing;
 	
 	//TODO: aggiungere una fase di preparazione
+		/*
+		 * L'idea è un po' questa, una volta che decido cosa fare dopo aver ricevuto l'ordine di evacuazione:
+		 * - spendo del tempo a prepararmi
+		 * - questo tempo è da inizializzare in create come in Bonadonna
+		 * - sarà aumentato o diminuito di un coefficiente a seconda della cosa scelta (se scelgo di andare a cercare qualcuno ci metto di più)
+		 * - trascorso questo tempo farà la cosa che ha deciso di fare
+		 */
+	plan prepare intention: preparing {
+		time_spent_preparing <- time_spent_preparing + step;
+		if time_spent_preparing >= total_preparing_time {
+			if self.has_belief(going_to_port) {
+				do remove_desire(preparing);
+				do add_desire(at_target_port);
+				do add_belief(prepared_to_evacuate);
+			}
+		}
+		
+	}
 	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
 		//decision process
@@ -1012,11 +1229,14 @@ species LawEnforcement parent: Human{
 	rgb color <- #green;
 	point area_to_presidiate_location;
 	
+	predicate on_duty_regular <- new_predicate("on duty regular");
 	predicate block_access <- new_predicate("block access");
 	predicate reached_patrol_area <- new_predicate("reached patrol area");
 	predicate patrol <- new_predicate("patrol assigned area"); 
+	predicate see_person <- new_predicate("see person");
+	predicate warn_person <- new_predicate("warn person");
 	
-	rule belief: reached_patrol_area new_desire: patrol;
+	rule belief: reached_patrol_area new_desire: patrol when: !(self.has_belief(evacuation_order));
 	
 	plan block_paths intention: block_access {
         do goto target: area_to_presidiate_location on: road_network;
@@ -1027,21 +1247,142 @@ species LawEnforcement parent: Human{
     }
 	
 	plan patrol_area intention: patrol {
-		//se percepiscono persone, dirgli di fermarsi e andare al porto
-			//se le persone vanno già al porto li fa andare avanti
-		//per il resto stare fermi, fino a che PC dice di tornare indietri
-		// TODO: quando c'è contagio emoozionale, fai che rassicura gli spaventati (o qualcosa del genere)
+		if self.has_belief(see_person){
+			do add_subintention(get_current_intention(), warn_person, true);
+			do current_intention_on_hold();
+		}
 	}
 	
-	//TODO: alert people of evacuation (alternativa ad IT allert)
+	plan warn_people intention: warn_person {
+		predicate person_seen <- predicate(get_predicate(get_belief_with_name("see person")));
+		People person_to_warn <- person_seen.values["person"];
+		ask person_to_warn {
+			predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
+			if current_person_intention  != at_target_port and current_person_intention != in_target_port{
+				//write "DEBUG:" + myself.name + " - " + person_seen;
+				do remove_intention(current_person_intention , true);
+				do add_belief(going_to_port);
+			}
+		}
+		do remove_intention(warn_person, true);
+	}
+	// TODO: quando c'è contagio emoozionale, fai che rassicura gli spaventati (o qualcosa del genere)
 	
-	//TODO: evacuate
+	//alert people of evacuation 
+	float alert_destination_min_distance <- 500 #m;
+	float alert_population_radius <- 150 #m;
+	predicate alert_population <- new_predicate("alert population");
+	predicate perceived_person_to_alert <- new_predicate("perceived person to alert");
+	predicate alert_person <- new_predicate("alert person");
+	predicate already_alerted_person <- new_predicate("already alerted person");
+	
+	plan alert_population_of_evacuation_order intention: alert_population {
+		predicate current_target <- new_predicate("current target");
+
+		if !(self.has_belief(current_target)) { 
+			point target; 
+			loop while: target = nil or target distance_to(self) < alert_destination_min_distance {
+				target <- any(road_network.vertices);
+			}
+			do add_belief(new_predicate("current target", ["destination"::target]));							
+			}
+		
+		predicate target_belief <- predicate(get_predicate(get_belief_with_name("current target")));
+		point target_location <- target_belief.values["destination"];
+		do goto target: target_location on: road_network;
+
+		if self.has_belief(perceived_person_to_alert) {
+			do add_subintention(get_current_intention(), alert_person, true);
+			do current_intention_on_hold();
+		}
+		
+		if (self.location = target_location) {
+			do remove_belief(current_target);
+		}
+	}
+	
+		perceive target: People in: alert_population_radius  {
+		list<predicate> already_alerted_person_people_beliefs_list <- myself.get_beliefs_with_name("already alerted person") collect (predicate(get_predicate(mental_state (each))));
+		list<predicate> perceived_people_beliefs_list <- myself.get_beliefs_with_name("perceived person to alert") collect (predicate(get_predicate(mental_state (each))));
+		focus id: "peson perceived" agent_cause: self;
+		People perceived_person <- self; 
+		bool person_already_alerted_by_someone <- false;
+		if empty(already_alerted_person_people_beliefs_list where (each.values["person"]=perceived_person)) {
+			if perceived_person.has_belief(evacuation_order){
+				//write "DEBUG: " + self.name + "was already alerted.";
+				person_already_alerted_by_someone <- true;	
+				ask myself {
+					predicate to_alert_perceived_person_belief <- perceived_people_beliefs_list first_with (each.values["person"] = perceived_person);
+					do remove_belief(to_alert_perceived_person_belief);
+					do add_belief(new_predicate("already alerted person", ["person"::perceived_person]));
+				}
+			}
+			if person_already_alerted_by_someone = false {
+				ask myself{
+					do add_belief(new_predicate("perceived person to alert", ["person"::perceived_person]));
+				}			
+			}
+		}
+	}	
+
+	plan must_alert_person intention: alert_person {
+		list<predicate> perceived_people_beliefs_list <- get_beliefs_with_name("perceived person to alert") collect (predicate(get_predicate(mental_state (each))));
+		loop belief over: perceived_people_beliefs_list {
+			predicate person_to_alert_belief <- belief;
+			People person_to_alert <- person_to_alert_belief.values["person"];
+			ask person_to_alert {do add_belief(evacuation_order);}
+		}
+		do remove_intention(alert_person, true);
+	}
+	
+	//EVACUATION
+	predicate evacuate <- new_predicate("evacuate");
+	predicate lets_leave <- new_predicate("lets_leave");
+	
+	perceive target: place_to_evacuate_from in: 10 #m {
+		ask myself{
+			do remove_intention(evacuate, true);
+			do add_desire(lets_leave);
+		}
+	}
+	rule belief: evacuation_order new_desire: evacuate;
+	
+	plan evacuate intention: evacuate {
+		//write "DEBUG: " + self.name + "Leaving Island.";
+		list<EvacuationInfrastructure> PortsHeliports <- list(Port) + list(Heliport);
+		place_to_evacuate_from <- PortsHeliports closest_to(self);
+		do goto target: place_to_evacuate_from on: road_network;
+	}
+	
+	plan wait_to_leave_island intention: lets_leave {
+		if location != place_to_evacuate_from.location {
+			do goto target: place_to_evacuate_from on: road_network;
+		}
+		else {
+			if self in place_to_evacuate_from.people_waiting_list = false and boarded_vehicle = nil{
+				add self to: place_to_evacuate_from.people_waiting_list;
+				place_to_evacuate_from.people_with_no_assigned_vehicle <- place_to_evacuate_from.people_with_no_assigned_vehicle + 1;
+			}
+		}	
+	}
 	
 	
     aspect default {
-        draw circle(20) color: color border: #black;
-        draw circle(view_dist) color: color border: #black wireframe: true;
+    	
+		if has_intention_op(self, predicate("patrol assigned area")) {			
+			draw circle(10) rotate: heading + 90 color: #yellow;
+			draw circle(view_dist) color: #yellow border: #black wireframe: true;
+		}
+		else if has_intention_op(self, predicate("alert population")) {
+			draw triangle(10) rotate: heading + 90 color: #yellow;
+			draw circle(alert_population_radius) color: rgb(1,0,0,0.3);
+		} 
+    	else {
+    		draw triangle(10) rotate: heading + 90 color: color;
+    		draw circle(view_dist) color: color border: #black wireframe: true;
+    	}
     }
+    
 }
 /*
  *  EVACUTION VEHICLES: ferries, helicopters
@@ -1089,6 +1430,7 @@ species EvacuationVehicle skills: [moving] {
 			waited_for_too_long <- true;
 			ask target_infrastructure_agent {
 				self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;
+				self.people_with_no_assigned_vehicle <- self.people_with_no_assigned_vehicle + myself.capacity - myself.people_on_board;
 			}
 		}
 	}
