@@ -148,7 +148,7 @@ global {
 			view_dist <- 30 #m;
 			if flip(1/2) {location <- any_location_in(one_of(Buildings));}
 			else {location <- any_location_in(one_of(Roads));}
-			//total_preparing_time <- truncated_gauss({preparing_time_avg, preparing_time_std})#s;
+			total_preparing_time <- truncated_gauss({preparing_time_avg, preparing_time_std})#s;
 			total_preparing_time <- 0 #s;
     	}
     	//create social links
@@ -391,7 +391,10 @@ species EvacuationInfrastructure {
 					self.boarded_vehicle <- EvacuationVehicle(vehicle); 
 					self.boarded <- true; //this will activate a reflex in the person agent that make it follow the vehicle
 					do add_belief(left_the_island);
-					self.communicated_my_status <- false;
+					if !(self.my_communicated_statuses contains "on board") {
+						do add_subintention(get_current_intention(), communicate_status, true);		
+						do current_intention_on_hold();							
+			}
 				}
 				if People contains person {
 					nb_people_on_board <- nb_people_on_board +1;
@@ -990,7 +993,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 					if exposition_model = "squared" {
 						if flip(float(intensity^2) / ((length(intensity_distribution))^2)) {
 							ask person {
-								self.boom_intensity <- myself.intensity;
+								//TODO: insert personality in lifetime
+								int lifetime <- int((600 #s)*(myself.intensity+1)/step);
+								do add_belief(new_predicate("Boom", ["intensity" :: myself.intensity]), 1.0, lifetime);
 							}
 						}
 					}
@@ -1031,7 +1036,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	predicate at_target_port <- new_predicate("at target port"); 
 	predicate in_target_port <- new_predicate("in target port");
 	predicate left_the_island <- new_predicate("left the island");
-	bool communicated_my_status <- false;
+	list<string> my_communicated_statuses <- [];
 	predicate communicate_status <- new_predicate("communicate status");
 	predicate need_boarding_decision <- new_predicate("need to take a decision on whether to board");
 
@@ -1043,6 +1048,10 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	
 	plan go_to_nearest_port intention: at_target_port {
+		if !(self.my_communicated_statuses contains "going to port") {
+			do add_subintention(get_current_intention(), communicate_status, true);	
+			do current_intention_on_hold();				
+		}
 		port_to_evacuate_from <- Port closest_to(self);
 		do goto target: port_to_evacuate_from on: road_network;
 	}
@@ -1059,7 +1068,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			}
 		}
 		if location = port_to_evacuate_from.location and People contains self {
-			if self.communicated_my_status = false {
+			if !(self.my_communicated_statuses contains "at port") {
 				do add_subintention(get_current_intention(), communicate_status, true);		
 				do current_intention_on_hold();							
 			}
@@ -1127,8 +1136,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  */
  species People parent: Human{
 	
-	//volcano-related variables 
-	int boom_intensity;
 	
 	//customiaztion variables	
 	rgb color <- #blue;
@@ -1156,7 +1163,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision;
 	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing;
 	
-	//TODO: aggiungere una fase di preparazione
+	//TODO: finire la fase di preparazione
 		/*
 		 * L'idea è un po' questa, una volta che decido cosa fare dopo aver ricevuto l'ordine di evacuazione:
 		 * - spendo del tempo a prepararmi
@@ -1170,19 +1177,92 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			if self.has_belief(going_to_port) {
 				do remove_desire(preparing);
 				do add_desire(at_target_port);
-				do add_belief(prepared_to_evacuate);
+				do add_belief(prepared_to_evacuate);	
+			}
+			else if self.has_belief(going_rescue_someone) {
+			}
+			else if self.has_belief(waiting_for_someone) {
 			}
 		}
+	}
+	
+	predicate rescue_someone <- new_predicate("rescue someone");
+	predicate no_friend_needs_help <- new_predicate("no friend needs help");
+	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing;
+
+	People friend_to_rescue;
+
+	/*
+	perceive target: friend_to_rescue when: friend_to_rescue != nil and self.has_intention(rescue_someone){		
+	}
+	*/
+	action select_friend_to_help {
+		list<string> help_statuses <- ["unknown", "waiting"];
+		list<People> friends_that_might_need_help;
+		//TODO: crea una lista dove hai le persone che sai già che non sono dove devono essere
+		list<predicate> my_friends_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
+		loop fr_stat over: my_friends_statuses {
+			if help_statuses contains fr_stat.values["status"] {
+				friends_that_might_need_help <+ my_friends first_with(each.name = fr_stat.values["name"]);
+			}
+		}
+		if !empty(friends_that_might_need_help) {
+			list<social_link> friends_that_need_help_links <- self.social_link_base where (friends_that_might_need_help contains each.agent);
+			social_link closest_friend_link <- friends_that_need_help_links first_with ((each.liking+each.familiarity) >= friends_that_need_help_links max_of(each.liking+each.familiarity));
+			friend_to_rescue <- People(closest_friend_link.agent);			
+		}
+		else {do add_belief(no_friend_needs_help);}
 		
+	}
+	plan go_rescue intention: rescue_someone {
+		if !empty(my_friends) and friend_to_rescue = nil {
+			do select_friend_to_help;
+		}
+		else if friend_to_rescue != nil {
+			list<predicate> my_friends_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
+			point friend_location <- (my_friends_statuses first_with ((each).values["name"] = friend_to_rescue.name)).values["location"];
+			if self.location != friend_location {
+				//TODO: update with agent being faster
+				do goto target: friend_location on: road_network;
+			}
+			else{
+				if self distance_to(friend_to_rescue) < 150 #m {
+					ask friend_to_rescue {
+						//TODO: calmalo se ha paura
+						//TODO: se stava aspettando, digli di seguirti
+						//TODO: se stava facendo altro (e non stava già andando al porto), digli di andare al porto
+					}
+				}
+				else {
+					//TODO: aggiungi paura che non lo hai visto e non sai come sta					
+				}
+				
+			}
+			
+		}
+		else if empty(my_friends) {do add_belief(no_friend_needs_help);}	
 	}
 	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
 		//decision process
+
+		//come si può attivare l'uno o l'altro? Ci si basa sulla personalità e/o l'emozione? 
+
 		if flip(1) {
 			do add_belief(going_to_port);
 		} 
+		/* 
+		else if self.name = "oh"{
+			//TODO: aggiungi se non hai il belief che siano tutti tutto okay
+			do select_friend_to_help();
+			do add_belief(going_rescue_someone);
+		}
+		else if self.name = "bah" {
+			do add_belief(waiting_for_someone);
+		}	
+		* 
+		*/
 	}
-	  
 	//TODO: SOCIAL LINKS
 		//c'è solo da scegliere come inizializzarli, volendo fare un reflex per mostrare le reti sociali ma credo sia una perdita di tempo
 	list<People> my_friends;
@@ -1191,11 +1271,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	plan update_friends intention: communicate_status instantaneous: true {
 		if self.has_desire(in_target_port) {do update_status_to_my_friends("at port");}
 		else if self.has_belief(left_the_island) {do update_status_to_my_friends("on board");}
-		else if self.has_desire(going_rescue_someone) {do update_status_to_my_friends("rescuing");}
+		else if self.has_desire(at_target_port) {do update_status_to_my_friends("going to port");}
+		else if self.has_desire(rescue_someone) {do update_status_to_my_friends("rescuing");}
 		else if self.has_desire(waiting_for_someone) {do update_status_to_my_friends("waiting");}
 		//else if self.has_desire(in_waiting_area) {do update_status_to_my_friends("in waiting area");}}
 		do remove_intention(communicate_status, true);
-		self.communicated_my_status <- true;
 	}
 	
 	action update_status_to_my_friends(string status) {
@@ -1210,10 +1290,24 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				do add_belief(new_predicate("friend status", my_status));
 			}
 		}
+		self.my_communicated_statuses <+ status;
 		//write "DEBUG: " + self.name + " has updated belief base of " + my_friends;
 	}
 
 	//TODO: EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
+	int perceived_boom_intensity <- 0;
+	predicate boomHeard <- new_predicate("Boom");
+	
+	reflex update_intensity when: self.has_belief(boomHeard) {
+		perceived_boom_intensity <- 0;
+		list<predicate> boom_bf_list <- get_beliefs_with_name("Boom") collect (predicate(get_predicate(mental_state (each))));
+		loop belief over: boom_bf_list {
+			int single_intensity <- int(belief.values["intensity"]);
+			//write "DEBUG: " + get_lifetime(one_of(get_belief_with_name("Boom")));
+			perceived_boom_intensity <- perceived_boom_intensity + single_intensity; 
+		}
+		//write "DEBUG: " + perceived_boom_intensity;
+	}
 
 	//TODO: EMOTIONAL CONTAGION
 
