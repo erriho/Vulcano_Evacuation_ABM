@@ -5,10 +5,13 @@ global {
 		//evacuation variables
 	int nb_humans_on_island; //done
 	int nb_people_on_island; //done
+	int nb_LEAs_on_island; //done
 	int nb_humans_on_board;  //done
 	int nb_people_on_board;  //done
+	int nb_LEAs_on_board;  //done
 	int nb_evacuated_humans; //done
 	int nb_evacuated_people; //done
+	int nb_evacuated_LEAs; //done
 	//TODO: update the following in the code
 		//people status variables
 	int nb_people_warned; //done 
@@ -16,9 +19,10 @@ global {
 	int nb_people_going_to_port; //done (missing belief removal, for this and all the following, at least the temporary ones)
 	int nb_people_rescuing_others; //done
 	int nb_people_waiting; //done
-	int nb_people_at_port; //missing belief
+	int nb_people_at_port; //done
 	int nb_people_who_left_the_island; //done
 		//people emotional status variable
+	//TODO: dobbiamo scegliere sopra che intensità uno ha paura o è gioioso
 	int nb_joyous_people;
 	int nb_fearful_people;
 	int nb_alright_people;
@@ -280,6 +284,7 @@ global {
 		}
 	nb_humans_on_island <-length(People)+length(LawEnforcement);
 	nb_people_on_island <-length(People);	
+	nb_LEAs_on_island <- length(LawEnforcement);
 	}
 }
 
@@ -400,6 +405,10 @@ species EvacuationInfrastructure {
 					nb_people_on_board <- nb_people_on_board +1;
 					nb_people_on_island <- nb_people_on_island - 1; 						
 				}
+				if LawEnforcement contains person{
+					nb_LEAs_on_board <- nb_LEAs_on_board +1;
+					nb_LEAs_on_island <- nb_LEAs_on_island - 1;
+				}
 				nb_humans_on_board <- nb_humans_on_board + 1;
 				nb_humans_on_island <- nb_humans_on_island - 1;
 			}
@@ -424,6 +433,10 @@ species EvacuationInfrastructure {
 			if People contains person {				
 				nb_people_on_board <- nb_people_on_board - 1;
 				nb_evacuated_people <- nb_evacuated_people + 1;
+			}
+			if LawEnforcement contains person {				
+				nb_LEAs_on_board <- nb_LEAs_on_board - 1;
+				nb_evacuated_LEAs <- nb_evacuated_LEAs + 1;
 			}
 			nb_humans_on_board <- nb_humans_on_board - 1;
 			nb_evacuated_humans <- nb_evacuated_humans + 1;
@@ -1026,6 +1039,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	//enviornment-related variables
 	float view_dist;
+	float walking_speed <- 5 #km/#h;
 	//boarding-related variables
 	EvacuationInfrastructure place_to_evacuate_from;
 	Port port_to_evacuate_from;
@@ -1062,6 +1076,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			do goto target: port_to_evacuate_from on: road_network;
 		}
 		else {
+			if !(self.has_belief(in_target_port)) {do add_belief(in_target_port);}
 			if self in port_to_evacuate_from.people_waiting_list = false and boarded_vehicle = nil{
 				add self to: port_to_evacuate_from.people_waiting_list;
 				port_to_evacuate_from.people_with_no_assigned_vehicle <- port_to_evacuate_from.people_with_no_assigned_vehicle + 1;
@@ -1169,7 +1184,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	predicate prepared_to_evacuate <- new_predicate("prepared to evacuate");
 	float time_spent_preparing <- 0 #s;
 	float total_preparing_time <- 600 #s;
-	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision;
+	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision when: !(self.has_belief(took_evac_decision));
 	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing;
 	
 	//TODO: finire la fase di preparazione
@@ -1184,11 +1199,12 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		time_spent_preparing <- time_spent_preparing + step;
 		if time_spent_preparing >= total_preparing_time {
 			if self.has_belief(going_to_port) {
-				do remove_desire(preparing);
+				do remove_intention(preparing, true);
 				do add_desire(at_target_port);
 				do add_belief(prepared_to_evacuate);	
 			}
 			else if self.has_belief(going_rescue_someone) {
+				do add_desire(rescue_someone);
 			}
 			else if self.has_belief(waiting_for_someone) {
 			}
@@ -1242,6 +1258,13 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 						//TODO: se stava facendo altro (e non stava già andando al porto), digli di andare al porto
 					}
 				}
+				if self distance_to(friend_to_rescue) < 150 #m {
+					ask friend_to_rescue {					
+						predicate my_current_intention <- predicate(get_predicate(get_current_intention()));
+						do remove_intention(my_current_intention, true);
+						do add_belief(going_to_port);
+					}	
+				}
 				else {
 					//TODO: aggiungi paura che non lo hai visto e non sai come sta					
 				}
@@ -1266,9 +1289,13 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		} 
 		/* 
 		else if self.name = "oh"{
-			//TODO: aggiungi se non hai il belief che siano tutti tutto okay
-			do select_friend_to_help();
-			do add_belief(going_rescue_someone);
+			if !(self.has_belief(no_friend_needs_help)):
+				do select_friend_to_help();
+				do add_belief(going_rescue_someone);
+			else:
+				predicate my_current_intention <- predicate(get_predicate(get_current_intention()));
+				do remove_intention(my_current_intention, true);
+				do add_belief(at_port);			
 		}
 		else if self.name = "bah" {
 			do add_belief(waiting_for_someone);
@@ -1892,7 +1919,8 @@ experiment "show simulation" type: gui {
 	}
 }
 
-experiment "show simulation_with_charts" type: gui {     
+experiment "show simulation_with_charts" type: gui {    
+	int refresh_rate <- 120 #cycles; 
     output {
 	    display vulcano_map type: 3d{
 	       species Island refresh: false;
@@ -1909,18 +1937,47 @@ experiment "show simulation_with_charts" type: gui {
 	       species People;
    	       species LawEnforcement;
 	    }
-		display Evacuation_Info refresh: every(120 #cycles) {
-	       chart "People evacuated successfully" type: series size: {1,0.5}{
+		display "Evacuation Info" refresh: every(refresh_rate) {
+	       chart "Humans evacuated successfully" type: series size: {1,0.5} position: {0,0}{
+		       	data "Humans successfully evacuated" value: nb_evacuated_humans color: #green;
+		       	data "Humans on board" value: nb_humans_on_board color: #blue;
+		       	data "Humans still to evacuate" value: nb_humans_on_island color: #red;
+	       }
+	       chart "People evacuated successfully" type: series size: {0.5,0.5} position: {0,0.5} {
 		       	data "People successfully evacuated" value: nb_evacuated_people color: #green;
 		       	data "People on board" value: nb_people_on_board color: #blue;
 		       	data "People still to evacuate" value: nb_people_on_island color: #red;
 	       }
-	       chart "Humans evacuated successfully" type: series size: {2,0.5}{
-		       	data "Humans successfully evacuated" value: nb_evacuated_humans color: #green;
-		       	data "Humans on board" value: nb_humans_on_board color: #blue;
-		       	data "Humans still to evacuate" value: nb_humans_on_island color: #red;
-	       }			
-	       
+	       chart "LawEnforcement evacuated successfully" type: series size: {0.5,0.5} position: {0.5,0.5} {
+	       		data "LEAs successfully evacuated" value: nb_evacuated_LEAs color: #green;
+		       	data "LEAs on board" value: nb_LEAs_on_board color: #blue;
+		       	data "LEAs still to evacuate" value: nb_LEAs_on_island color: #red;
+	       }
+       }
+       display "Behavioural Info" refresh: every(refresh_rate){
+	       chart "People behaviour - Timeseries" type: series size: {0.5, 0.5} position: {0,0} {
+	       		data "warned" value: nb_people_warned color: #yellow;
+	       		data "prepared" value: nb_people_prepared color: #orange;
+	       		data "going to port" value: nb_people_going_to_port color: #blue;
+	       		data "rescuing" value: nb_people_rescuing_others color: #red;
+	       		data "waiting help" value: nb_people_waiting color: #black;
+	       		data "at port" value: nb_people_at_port color: #grey;
+	       		data "left island" value: nb_people_who_left_the_island color: #green;
+	       }
+	       chart "People emotions" type: series size: {0.5, 0.5} position: {0.5,0} {
+	       		data "joyous" value: nb_joyous_people color: #darkgreen;
+	       		data "fearful" value: nb_fearful_people color: #purple;
+	       		data "normal" value: nb_alright_people color: #grey;
+	       }
+	       chart "People behaviour - Histogram" type: histogram size: {1, 0.5} position: {0,0.5} {
+	       		data "warned" value: nb_people_warned color: #yellow;
+	       		data "prepared" value: nb_people_prepared color: #orange;
+	       		data "going to port" value: nb_people_going_to_port color: #blue;
+	       		data "rescuing" value: nb_people_rescuing_others color: #red;
+	       		data "waiting help" value: nb_people_waiting color: #black;
+	       		data "at port" value: nb_people_at_port color: #grey;
+	       		data "left island" value: nb_people_who_left_the_island color: #green;
+	       }			  
 		}	       
 	}
 }
