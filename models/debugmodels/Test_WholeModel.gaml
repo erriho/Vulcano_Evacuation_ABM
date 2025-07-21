@@ -2,6 +2,8 @@ model TestModel
 
 global {
 	//gloal variables for results
+	bool save_results <- true;
+	string saving_folder <- "../../results/";
 		//evacuation variables
 	int nb_humans_on_island; //done
 	int nb_people_on_island; //done
@@ -12,7 +14,6 @@ global {
 	int nb_evacuated_humans; //done
 	int nb_evacuated_people; //done
 	int nb_evacuated_LEAs; //done
-	//TODO: update the following in the code
 		//people status variables
 	int nb_people_warned; //done 
 	int nb_people_prepared; //done
@@ -22,6 +23,7 @@ global {
 	int nb_people_at_port; //done
 	int nb_people_who_left_the_island; //done
 		//people emotional status variable
+	//TODO: update the following in the code
 	//TODO: dobbiamo scegliere sopra che intensità uno ha paura o è gioioso
 	int nb_joyous_people;
 	int nb_fearful_people;
@@ -1900,6 +1902,18 @@ species Helicopter parent: EvacuationVehicle {
 }
 
 experiment "show simulation" type: gui {     
+	int save_every <- 15 #cycles;
+	reflex save_temporal_series when: save_results = true and mod(cycle, save_every) = 0{
+		string save_path <- saving_folder + "prova.csv";
+		save [time, 
+			nb_humans_on_island, nb_people_on_island, nb_LEAs_on_island,
+			nb_humans_on_board, nb_people_on_board, nb_LEAs_on_board,
+			nb_evacuated_humans, nb_evacuated_people, nb_evacuated_LEAs,
+			nb_people_warned, nb_people_prepared, nb_people_going_to_port, nb_people_rescuing_others, nb_people_waiting, nb_people_at_port, nb_people_who_left_the_island,
+			nb_joyous_people, nb_fearful_people, nb_alright_people
+		] to: save_path format: "csv" header: true rewrite: false;
+	}
+	//TODO: save final results, save boom
     output {
 	    display vulcano_map type: 3d{
 	       species Island refresh: false;
