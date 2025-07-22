@@ -2,8 +2,13 @@ model TestModel
 
 global {
 	//gloal variables for results
-	bool save_results <- true;
+	bool save_data <- false;
+	int save_series_every <- 15 #cycles;
+	bool should_kill_simulation <- false;
 	string saving_folder <- "../../results/";
+	string temporal_series_recorder_filename <- "prova.csv";
+	string volcanic_recorder_filename <- "prova2.csv";
+	string simulation_recorder_filename <- "prova3.csv";
 		//evacuation variables
 	int nb_humans_on_island; //done
 	int nb_people_on_island; //done
@@ -64,7 +69,7 @@ global {
 	];
 	
 		//civil defense
-	bool ITalert_glob <- true;
+	bool ITalert_glob <- false;
 	map glob_manage_LEAs_map <- [
 		"give evacuation order" :: 20,
 		"backup" :: manage_LEAs_backups_map 
@@ -72,8 +77,8 @@ global {
 	map manage_LEAs_backups_map <- [
 		"should create backups" :: true,
 		"location":: "any_port",
-		"number":: 50,
-		"arrival time":: 6000 #s
+		"number":: 20,
+		"arrival time":: 60 #s
 	];
 	
 		//people
@@ -84,6 +89,65 @@ global {
 	 * ASPECT CUSTOMIZATION
 	 */
 	string font_name <- "Arial";
+	
+	/*
+	 * SAVING SIMULATION OUTPUTS
+	 */
+		//recorder lists and usage (i.e. how they must be filled)
+	list<map> volcanic_activity_recorder; //it contains object like ["time" :: time, "activity name" :: "Boom Emission", "activity params" :: ["intensity" :: 9]]
+	list<map> simulation_events_recorder; //it contains object like ["time" :: time, "name" :: "Evacuation Order", "notes" :: ""]
+		//saving temporal series (every n=save_series_every cycles)
+	reflex save_temporal_series when: save_data = true and mod(cycle, save_series_every) = 0{
+		string save_path <- saving_folder + temporal_series_recorder_filename;
+		save [time, 
+			nb_humans_on_island, nb_people_on_island, nb_LEAs_on_island,
+			nb_humans_on_board, nb_people_on_board, nb_LEAs_on_board,
+			nb_evacuated_humans, nb_evacuated_people, nb_evacuated_LEAs,
+			nb_people_warned, nb_people_prepared, nb_people_going_to_port, nb_people_rescuing_others, nb_people_waiting, nb_people_at_port, nb_people_who_left_the_island,
+			nb_joyous_people, nb_fearful_people, nb_alright_people
+		] to: save_path format: "csv" header: true rewrite: false;
+	}
+		//saving the completion of civil evacuation (no more People left in the simulation)
+	bool civil_evacuation_completion_was_saved <- false;
+	reflex save_civil_evacuation_completion when: save_data and !civil_evacuation_completion_was_saved and empty(People){
+		map event_map <- [
+			"time" :: time,
+			"name" :: "Civil Evacuation Completed",
+			"notes" :: "The evacuation of civil population was completed."
+		];
+		simulation_events_recorder <+ event_map;
+		civil_evacuation_completion_was_saved <- true;
+	}
+		//saving recorders
+	reflex save_recorders when: empty(People) and empty(LawEnforcement) and save_data {
+			//volcanic activity recorder
+ 		string save_path <- saving_folder + volcanic_recorder_filename;
+		loop volcanic_event over: volcanic_activity_recorder {
+			int event_time <- int(volcanic_event["time"]);
+			string activity_name <- string(volcanic_event["activity name"]);
+			int activity_intensity_value;
+			if activity_name = "Boom Emission" {activity_intensity_value <- int(volcanic_event["activity params"]["intensity"]);}
+			else {activity_intensity_value <- nil;}
+			save [event_time, activity_name, activity_intensity_value] to: save_path format: "csv" header: true rewrite: false;	
+		}
+		//saving the completion of evacuation (no more People and LAEs left in the simulation)
+		map event_map <- [
+			"time" :: time,
+			"name" :: "Evacuation Completed",
+			"notes" :: "Evacuation was completed."
+		];
+		simulation_events_recorder <+ event_map;
+			//simulation events recorder
+		save_path <- saving_folder + simulation_recorder_filename;
+		loop simulation_event over: simulation_events_recorder {
+			int event_time <- int(simulation_event["time"]);
+			string event_name <- string(simulation_event["name"]);
+			string notes <- string(simulation_event["notes"]);
+			save [event_time, event_name, notes] to: save_path format: "csv" header: true rewrite: false;	
+		}
+		do pause;
+		if should_kill_simulation {ask host {do die;}}
+	}
 	
 	/*
 	 * SIMULATION INITIALIZATION
@@ -149,7 +213,7 @@ global {
 		 /*
 		  * CREATING PEOPLE
 		  */
-		create People number: 50 {
+		create People number: 1 {
 			speed <- 30 #km/#h;
 			view_dist <- 30 #m;
 			if flip(1/2) {location <- any_location_in(one_of(Buildings));}
@@ -218,7 +282,7 @@ global {
 		 /*
 		  * CREATING LAW ENFORCEMENT AGENTS
 		  */
-		create LawEnforcement number: 40 {
+		create LawEnforcement number: 1 {
 			float location_extraction <- rnd(1.0);
 			if location_extraction <= 0.80 {
 				float port_location_extraction <- rnd(1.0);
@@ -240,7 +304,7 @@ global {
 			//DEBUG: evacuation_mode <- true;
 			//DEBUG: ready_to_evacuate <- true;
 			safe <- true;
-			cruising_speed <- 20 #km/#h;
+			cruising_speed <- 2000 #km/#h;
 			speed <- cruising_speed;
 			approach_distance <- 1 #km;
 			boarding_speed <- 1/(15#s);
@@ -249,7 +313,7 @@ global {
 			capacity <- 20;
 			location <- any_location_in(one_of(ferry_network.vertices));
 			loop port over: Port {
-				//DEBUG:write port.name;
+				//DEBUG: write port.name;
 				if port.name = "Porto di Milazzo" {
 					hub <- port;
 					hub_location <- port.location;
@@ -545,7 +609,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	bool ITalert <- false; 
  	float ITalert_issuance_time <- 0 #s;
  	float time_needed_to_issue_ITalert <- 0 #s;
- 	reflex alert_people_with_ITallert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITalert = true {	
+ 	reflex alert_people_with_ITalert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITalert = true {	
  		ITalert_issuance_time <- ITalert_issuance_time + step; 
  		if ITalert_issuance_time >= time_needed_to_issue_ITalert {
  			write "(" + time + ")" + self.name + ": issued ITalert message.";
@@ -555,6 +619,14 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  				}
 	 		} 			
 	 		alerted_people <- list(People);
+ 		}
+ 		if save_data {
+ 			map event_map <- [
+				"time" :: time,
+				"name" :: "Population Evacuation Order - IT Alert issued",
+				"notes" :: "Civil defense ordered evacuation of civil population using IT Alert."
+			];
+			simulation_events_recorder <+ event_map;
  		}
  	}
  		//law enforcement 	
@@ -569,9 +641,17 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  				do remove_all_beliefs;
 				do add_belief(evacuation_order);
  			}
- 			write person.name + person.belief_base + person.intention_base;
+ 			//write "DEBUG: " + person.name + person.belief_base + person.intention_base;
  		}
  		alerted_law_enforcement <- list(LawEnforcement);
+ 		if save_data {
+ 			map event_map <- [
+				"time" :: time,
+				"name" :: "LEAs Evacuation Order",
+				"notes" :: "Civil defense ordered evacuation of Law Enforcement Agents."
+			];
+			simulation_events_recorder <+ event_map;
+ 		}
  	}
 	//LAW ENFORCEMENT AGENTS MANAGEMENT
 	bool issue_LEAs_order <- false;
@@ -601,10 +681,19 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 					if flip(0.8) {location <- (first_with(Port,each.name = "Porto di Levante")).location;}
 					else {location <- (first_with(Port,each.name = "Molo di protezione civile di Gelso")).location;}
 	 			} 				
+	 			nb_humans_on_island <- nb_humans_on_island + backup_init_nb;
 	 			write "DEBUG: backups created.";
  			}
- 				
+ 			nb_LEAs_on_island <- nb_LEAs_on_island + backup_init_nb;
  			should_create_backups <- false;
+ 			if save_data {
+	 			map event_map <- [
+					"time" :: time,
+					"name" :: "Backups Reached Vulcano",
+					"notes" :: string(backup_init_nb) + " backup LEAs arrived on the Island. Ordered by Civil Defense at " + (time-backup_arrival_time+1)
+				];
+				simulation_events_recorder <+ event_map;
+		 	}
  		}
  	}
  	
@@ -632,7 +721,6 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 			 				do remove_intention(current_person_intention, true);
 		 					area_to_presidiate_location <- area_to_patrol.location;
 		 					do add_desire(block_access);
-		 					
 		 				}
 		 				available_LEAs >- LEA;
 		 				patroling_LEAs <+ LEA;
@@ -670,6 +758,14 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 			loop LEA over: available_LEAs{available_LEAs_copy <+ LEA;}
 			//Assign LEAs to issue evacuation order
 	 		if ITalert = false and length(ordering_evac_LEAs)<ordering_evac_LEAs_nb {
+		 		if save_data {
+		 			map event_map <- [
+						"time" :: time,
+						"name" :: "Population Evacuation Order - LEAs issued",
+						"notes" :: "Civil defense ordered LEAs to issue evacuation order of civil population."
+					];
+					simulation_events_recorder <+ event_map;
+			 	}
 	 			loop LEA over: available_LEAs_copy {
 		 			ask LEA {
 		 				predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
@@ -685,6 +781,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 	 				break;
 	 			}
 	 		}
+	 		
  		}	
  	}
  	bool everybody_is_alerted <- false;
@@ -698,6 +795,14 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 				do add_desire(block_access);
  			}
 		}
+		if save_data {
+ 			map event_map <- [
+				"time" :: time,
+				"name" :: "Population Evacuation Order - LEAs fulfilled",
+				"notes" :: "The evacuation order of civil population issuing was fulfilled by LEAs."
+			];
+			simulation_events_recorder <+ event_map;
+	 	}
  		everybody_is_alerted <- true;
  	}
  	
@@ -893,6 +998,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
      */
 		//UPDATE STATUS
     action update_eruption_status {
+    	int old_activity_level <- self.activity_level;
     	if self.new_activity_level = 0 {
     		write "Volcano " + self.name + " is dormant.";
     		self.activity_level <- self.new_activity_level;
@@ -910,6 +1016,14 @@ species Waiting_Areas parent: EvacuationInfrastructure {
     		self.activity_level <- self.new_activity_level;
     		color <- #red;
         	ask EruptivePhenomenonManager {self.activity_level<-myself.activity_level;}
+    	}
+    	if save_data {
+    		map event_map <- [
+    			"time" :: time,
+    			"name" :: "Volcanic Activity Update",
+    			"notes" :: "Volcano " + self.name + "went from activity level " + old_activity_level + " to " + self.activity_level
+    		];
+    		simulation_events_recorder <+ event_map;
     	}
 	}
 		//CREATE INTERNAL STRUCTURE AGENTS - NOT IMPLEMENTED
@@ -998,6 +1112,14 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		size <- 0.0;
 		intensity <- rnd_choice(intensity_distribution);
 		write "Boom!" + " - Intensity: " + string(intensity);
+		if save_data {
+			map boom_recorder <- [
+				"time" :: time, 
+				"activity name" :: "Boom Emission", 
+				"activity params" :: ["intensity" :: intensity]
+			];
+			volcanic_activity_recorder <+ boom_recorder;
+		}
 		should_initialize <- false;
 	}
 	reflex execute {
@@ -1522,27 +1644,27 @@ species LawEnforcement parent: Human{
 	}
 	
 		perceive target: People in: alert_population_radius  {
-		list<predicate> already_alerted_person_people_beliefs_list <- myself.get_beliefs_with_name("already alerted person") collect (predicate(get_predicate(mental_state (each))));
-		list<predicate> perceived_people_beliefs_list <- myself.get_beliefs_with_name("perceived person to alert") collect (predicate(get_predicate(mental_state (each))));
-		focus id: "peson perceived" agent_cause: self;
-		People perceived_person <- self; 
-		bool person_already_alerted_by_someone <- false;
-		if empty(already_alerted_person_people_beliefs_list where (each.values["person"]=perceived_person)) {
-			if perceived_person.has_belief(evacuation_order){
-				//write "DEBUG: " + self.name + "was already alerted.";
-				person_already_alerted_by_someone <- true;	
-				ask myself {
-					predicate to_alert_perceived_person_belief <- perceived_people_beliefs_list first_with (each.values["person"] = perceived_person);
-					do remove_belief(to_alert_perceived_person_belief);
-					do add_belief(new_predicate("already alerted person", ["person"::perceived_person]));
+			list<predicate> already_alerted_person_people_beliefs_list <- myself.get_beliefs_with_name("already alerted person") collect (predicate(get_predicate(mental_state (each))));
+			list<predicate> perceived_people_beliefs_list <- myself.get_beliefs_with_name("perceived person to alert") collect (predicate(get_predicate(mental_state (each))));
+			focus id: "peson perceived" agent_cause: self;
+			People perceived_person <- self; 
+			bool person_already_alerted_by_someone <- false;
+			if empty(already_alerted_person_people_beliefs_list where (each.values["person"]=perceived_person)) {
+				if perceived_person.has_belief(evacuation_order){
+					//write "DEBUG: " + self.name + "was already alerted.";
+					person_already_alerted_by_someone <- true;	
+					ask myself {
+						predicate to_alert_perceived_person_belief <- perceived_people_beliefs_list first_with (each.values["person"] = perceived_person);
+						do remove_belief(to_alert_perceived_person_belief);
+						do add_belief(new_predicate("already alerted person", ["person"::perceived_person]));
+					}
+				}
+				if person_already_alerted_by_someone = false {
+					ask myself{
+						do add_belief(new_predicate("perceived person to alert", ["person"::perceived_person]));
+					}			
 				}
 			}
-			if person_already_alerted_by_someone = false {
-				ask myself{
-					do add_belief(new_predicate("perceived person to alert", ["person"::perceived_person]));
-				}			
-			}
-		}
 	}	
 
 	plan must_alert_person intention: alert_person {
@@ -1902,18 +2024,6 @@ species Helicopter parent: EvacuationVehicle {
 }
 
 experiment "show simulation" type: gui {     
-	int save_every <- 15 #cycles;
-	reflex save_temporal_series when: save_results = true and mod(cycle, save_every) = 0{
-		string save_path <- saving_folder + "prova.csv";
-		save [time, 
-			nb_humans_on_island, nb_people_on_island, nb_LEAs_on_island,
-			nb_humans_on_board, nb_people_on_board, nb_LEAs_on_board,
-			nb_evacuated_humans, nb_evacuated_people, nb_evacuated_LEAs,
-			nb_people_warned, nb_people_prepared, nb_people_going_to_port, nb_people_rescuing_others, nb_people_waiting, nb_people_at_port, nb_people_who_left_the_island,
-			nb_joyous_people, nb_fearful_people, nb_alright_people
-		] to: save_path format: "csv" header: true rewrite: false;
-	}
-	//TODO: save final results, save boom
     output {
 	    display vulcano_map type: 3d{
 	       species Island refresh: false;
