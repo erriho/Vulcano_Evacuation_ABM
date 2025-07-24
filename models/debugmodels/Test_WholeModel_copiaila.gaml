@@ -54,7 +54,7 @@ global {
 		"RoaringSoundEmission" :: roaring_sound_emission_map
 	];
 	map roaring_sound_emission_map <- [
-		"lambda" :: 1000
+		"lambda" :: 10
 	];
 	
 		//civil defense
@@ -1429,6 +1429,16 @@ species LawEnforcement parent: Human{
 	
 	rule belief: reached_patrol_area new_desire: patrol when: !(self.has_belief(evacuation_order));
 	
+	perceive target: People in: view_dist {
+		focus id: "person seen" agent_cause: self;
+		People person_seen <- self; 
+		
+		ask myself{
+			//do add_belief(new_predicate("see person", self));
+			do add_belief(new_predicate("see person", ["person"::person_seen]));
+		}
+	}
+	
 	plan block_paths intention: block_access {
         do goto target: area_to_presidiate_location on: road_network;
         if (self distance_to(area_to_presidiate_location) < 10 #m) { 
@@ -1453,6 +1463,16 @@ species LawEnforcement parent: Human{
 				//write "DEBUG:" + myself.name + " - " + person_seen;
 				do remove_intention(current_person_intention , true);
 				do add_belief(going_to_port);
+			}
+			//ENRICO GUARDA CHE ABBIAMO FATTO!!
+			if has_emotion(fearEruption){
+			float fear_intensity <- get_intensity(get_emotion(fearEruption));
+			write self.name + "Fear intensity 1: " + fear_intensity;
+			fear_intensity <- fear_intensity - 0.1; 
+			fearEruption <- set_intensity(fearEruption, fear_intensity); 
+			float fear_intensity_2 <- get_intensity(get_emotion(fearEruption));
+			write self.name + "Fear intensity 2: " + fear_intensity_2;
+			
 			}
 		}
 		do remove_intention(warn_person, true);
