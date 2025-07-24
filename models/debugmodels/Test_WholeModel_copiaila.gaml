@@ -209,6 +209,17 @@ global {
 	    		}
     		}
     	}
+/*
+    	//adding emotions related to people
+    	loop person over: People {
+	    	loop friend over: person.my_friends{
+	    		ask friend {
+	    			emotion HappyForFriend <- new_emotion("happy for" + person.name, in_target_port, person);
+	    			do add_emotion(HappyForFriend);
+	    		}
+	    	}
+    	}
+/*
 		 /*
 		  * CREATING LAW ENFORCEMENT AGENTS
 		  */
@@ -1062,6 +1073,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			do goto target: port_to_evacuate_from on: road_network;
 		}
 		else {
+			if !(self.has_belief(in_target_port)) {do add_belief(in_target_port);}
 			if self in port_to_evacuate_from.people_waiting_list = false and boarded_vehicle = nil{
 				add self to: port_to_evacuate_from.people_waiting_list;
 				port_to_evacuate_from.people_with_no_assigned_vehicle <- port_to_evacuate_from.people_with_no_assigned_vehicle + 1;
@@ -1308,6 +1320,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		self.my_communicated_statuses <+ status;
 		//write "DEBUG: " + self.name + " has updated belief base of " + my_friends;
 	}
+	
+	
+	emotion HappyFor <- new_emotion("happy for", in_target_port);
 
 	//TODO: EMOTIONs
 	emotion joyPort <- new_emotion("joy", in_target_port);
@@ -1315,6 +1330,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		//Enrico: secondo me niente, farei solo che se sei felice contagi gli altri calmando la paura se ti percepiscono
 	//Ilaria: CI SAREBBE DA AGGIUNGERE HAPPY FOR E SORRY FOR 
 		//Enrico: sono d'accordo, ma forse non è immediato, ci penso su
+	perceive target: People in: view_dist {
+		emotional_contagion emotion_detected: joyPort threshold: contagionThreshold;
+		//così c'è solo il contagio emozionale ma le emozioni sono indipendenti per ora, ho contemporaneamente
+		//paura dell'eruzione e gioia di essere al porto.. per diminuire fearEruption dobbiamo fare come prima?
+	}
 	
 	//TODO: EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
 	int max_perceived_boom_intensity <- 18; //TODO: make this value dependent also on personality (we could do so in the reflex so to leave this parameter on its own)
@@ -1347,13 +1367,13 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 
 	//TODO: EMOTIONAL CONTAGION
 
-	float uncertaintyConversion <- 0.25;
+	//float uncertaintyConversion <- 0.25;
 
-		perceive target:People in:view_dist{
+		//perceive target:People in:view_dist{
 
-		if(has_belief(Eruption) and not myself.has_belief(Eruption)){
+		//if(has_belief(Eruption) and not myself.has_belief(Eruption)){
 
-			focus id:"Eruption" strength: uncertaintyConversion is_uncertain:true;
+			//focus id:"Eruption" strength: uncertaintyConversion is_uncertain:true;
 
 //			ask myself{
 
@@ -1361,11 +1381,10 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 
 //			}
 
-		}
+//		}
 
-	}		
+//	}	
 
-	
 
 	float contagionThreshold <- 0.5 parameter: true;
 
