@@ -127,7 +127,6 @@ global {
 			string activity_name <- string(volcanic_event["activity name"]);
 			int activity_intensity_value;
 			if activity_name = "Boom Emission" {activity_intensity_value <- int(volcanic_event["activity params"]["intensity"]);}
-			else {activity_intensity_value <- nil;}
 			save [event_time, activity_name, activity_intensity_value] to: save_path format: "csv" header: true rewrite: false;	
 		}
 		//saving the completion of evacuation (no more People and LAEs left in the simulation)
@@ -1130,7 +1129,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 					if exposition_model = "squared" {
 						if flip(float(intensity^2) / ((length(intensity_distribution))^2)) {
 							ask person {
-								//TODO: insert personality in lifetime
+								//: insert personality in lifetime
 								int lifetime <- int((600 #s)*(myself.intensity+1)/step);
 								do add_belief(new_predicate("Boom", ["intensity" :: myself.intensity]), 1.0, lifetime);
 							}
@@ -1238,7 +1237,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 						 * 3) Come si strutturano i vari piani
 						 * 4) Perché ste domande se le fa ora e non quando si è avvicinato al porto?
 						 */
-
 						write self.name + " is waiting for " + cf_status.values["name"];
 						boarding_decision <- true;
 					}
@@ -1275,7 +1273,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  * PEOPLE
  */
  species People parent: Human{
-	
 	
 	//customiaztion variables	
 	rgb color <- #blue;
@@ -1468,9 +1465,16 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		//Enrico: sono d'accordo, ma forse non è immediato, ci penso su
 	
 	//TODO: EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
+	predicate noEruption <- new_predicate("Eruption",false);
+	predicate Eruption <- new_predicate("Eruption");
+	emotion fearEruption <- new_emotion("fear", Eruption);
+	//TODO: discutiamone
+	rule emotion:fearEruption new_desire: need_evac_decision remove_intention:enjoying_my_time remove_desire:enjoying_my_time when: (self.is_current_intention(enjoying_my_time) and !(self.has_belief(took_evac_decision)) and get_intensity(self.get_emotion(fearEruption)) > 0.3);
+		//response to boom sounds
 	int max_perceived_boom_intensity <- 18; //TODO: make this value dependent also on personality (we could do so in the reflex so to leave this parameter on its own)
 	float perceived_boom_coefficient <- 0.0;
 	predicate boomHeard <- new_predicate("Boom");
+	//rule belief: boomHeard new_uncertainty:Eruption strength: perceived_boom_coefficient when: not has_belief(Eruption);
 	
 	reflex update_intensity when: self.has_belief(boomHeard) {
 		int perceived_boom_intensity <- 0;
@@ -1487,14 +1491,27 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			perceived_boom_coefficient <- perceived_boom_intensity/max_perceived_boom_intensity;
 		}
 		//write "DEBUG: " + perceived_boom_intensity;
+		if self.has_uncertainty(Eruption){
+			mental_state current_uncertainty <- get_uncertainty_op(self, Eruption);
+			float current_uncertainty_strength <- current_uncertainty.strength; 
+			if current_uncertainty_strength = perceived_boom_coefficient{
+				//write "DEBUG: NO need to update uncertainty for " + self.name;
+			}
+			else{
+				do remove_uncertainty(Eruption);
+				do remove_emotion(fearEruption);
+				do add_uncertainty(Eruption, perceived_boom_coefficient);
+				current_uncertainty <- get_uncertainty_op(self, Eruption);
+				//write "DEBUG: Removed uncertainty of strength " + current_uncertainty_strength + " to update with " + current_uncertainty.strength + self.name;	
+			}
+		}
+		else {
+			do add_uncertainty(Eruption, perceived_boom_coefficient);
+			//write "DEBUG: Added uncertainty of strength " + perceived_boom_coefficient + self.name;
+		}
 	}
 	
-	predicate noEruption <- new_predicate("Eruption",false);
-	predicate Eruption <- new_predicate("Eruption");
-	emotion fearEruption <- new_emotion("fear", Eruption);
 
-	rule belief: boomHeard new_uncertainty:Eruption strength: perceived_boom_coefficient when: not has_belief(Eruption);
-	rule emotion:fearEruption new_desire: need_evac_decision remove_intention:enjoying_my_time remove_desire:enjoying_my_time;
 
 	//TODO: EMOTIONAL CONTAGION
 
@@ -1579,6 +1596,14 @@ species LawEnforcement parent: Human{
 	predicate warn_person <- new_predicate("warn person");
 	
 	rule belief: reached_patrol_area new_desire: patrol when: !(self.has_belief(evacuation_order));
+	
+	perceive target: People in: view_dist {
+		focus id: "person seen" agent_cause: self;
+		People person_seen <- self; 
+		ask myself{
+			do add_belief(new_predicate("see person", ["person"::person_seen]));
+		}
+	}
 	
 	plan block_paths intention: block_access {
         do goto target: area_to_presidiate_location on: road_network;

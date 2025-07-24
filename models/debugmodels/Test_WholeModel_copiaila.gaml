@@ -54,7 +54,7 @@ global {
 		"RoaringSoundEmission" :: roaring_sound_emission_map
 	];
 	map roaring_sound_emission_map <- [
-		"lambda" :: 10
+		"lambda" :: 60
 	];
 	
 		//civil defense
@@ -1335,6 +1335,24 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			}
 			perceived_boom_coefficient <- perceived_boom_intensity/max_perceived_boom_intensity;
 		}
+		if self.has_uncertainty(Eruption){
+			mental_state current_uncertainty <- get_uncertainty_op(self, Eruption);
+			float current_uncertainty_strength <- current_uncertainty.strength; 
+			if current_uncertainty_strength = perceived_boom_coefficient{
+				//write "DEBUG: NO need to update uncertainty for " + self.name;
+			}
+			else{
+				do remove_uncertainty(Eruption);
+				do remove_emotion(fearEruption);
+				do add_uncertainty(Eruption, perceived_boom_coefficient);
+				current_uncertainty <- get_uncertainty_op(self, Eruption);
+				//write "DEBUG: Removed uncertainty of strength " + current_uncertainty_strength + " to update with " + current_uncertainty.strength + self.name;	
+			}
+		}
+		else {
+			do add_uncertainty(Eruption, perceived_boom_coefficient);
+			//write "DEBUG: Added uncertainty of strength " + perceived_boom_coefficient + self.name;
+		}
 		//write "DEBUG: " + perceived_boom_intensity;
 	}
 	
@@ -1342,7 +1360,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	predicate Eruption <- new_predicate("Eruption");
 	emotion fearEruption <- new_emotion("fear", Eruption);
 
-	rule belief: boomHeard new_uncertainty:Eruption strength: perceived_boom_coefficient when: not has_belief(Eruption);
+	//rule belief: boomHeard new_uncertainty:Eruption strength: perceived_boom_coefficient when: not has_belief(Eruption);
 	rule emotion:fearEruption new_desire: need_evac_decision remove_intention:enjoying_my_time remove_desire:enjoying_my_time;
 
 	//TODO: EMOTIONAL CONTAGION
@@ -1353,7 +1371,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 
 		if(has_belief(Eruption) and not myself.has_belief(Eruption)){
 
-			focus id:"Eruption" strength: uncertaintyConversion is_uncertain:true;
+			//focus id:"Eruption" strength: uncertaintyConversion is_uncertain:true;
 
 //			ask myself{
 
@@ -1372,7 +1390,8 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	People perceivedOther <- nil;
 
 	perceive target: People in:view_dist parallel:false{
-		emotional_contagion emotion_detected:fearEruption threshold:contagionThreshold;
+		//write self.name + "Ti contagioooo";
+		//emotional_contagion emotion_detected:fearEruption threshold:contagionThreshold;
 		/*
 		 * POSSIBILE ESPANSIONE DEL MODELLO, se ci chiede in quali direzioni possiamo andare
 		 * socialize trust:gauss(0.0,0.33);
@@ -1466,13 +1485,17 @@ species LawEnforcement parent: Human{
 			}
 			//ENRICO GUARDA CHE ABBIAMO FATTO!!
 			if has_emotion(fearEruption){
-			float fear_intensity <- get_intensity(get_emotion(fearEruption));
-			write self.name + "Fear intensity 1: " + fear_intensity;
-			fear_intensity <- fear_intensity - 0.1; 
-			fearEruption <- set_intensity(fearEruption, fear_intensity); 
-			float fear_intensity_2 <- get_intensity(get_emotion(fearEruption));
-			write self.name + "Fear intensity 2: " + fear_intensity_2;
-			
+				emotion fear_to_reduce <- get_emotion(fearEruption);
+				mental_state current_uncertainty <- get_uncertainty_op(self, Eruption);
+				write "uncertainty" + string(current_uncertainty) + " - strength: " + current_uncertainty.strength;
+				mental_state eruption_des <- get_desire_op(self, noEruption);
+				write "desire" + string(eruption_des) + " - strength: " + eruption_des.strength;
+				float fear_intensity <- get_intensity(get_emotion(fearEruption));
+				write myself.name + " - " + self.name + " Fear intensity 1: " + fear_intensity;
+				fear_intensity <- fear_intensity - 0.1; 
+				fear_to_reduce <- set_intensity(fear_to_reduce, fear_intensity); 
+				float fear_intensity_2 <- get_intensity(get_emotion(fearEruption));
+				write myself.name + " - " + self.name + "Fear intensity 2: " + fear_intensity_2;
 			}
 		}
 		do remove_intention(warn_person, true);
