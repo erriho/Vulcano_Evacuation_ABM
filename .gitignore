@@ -4,6 +4,9 @@ orig_data/
 #ignore results folder
 results/
 
+#ignore file saved during debugging
+models/debugmodels/exports
+
 #ignore iCloud files
 *.DS_Store
 *.icloud
