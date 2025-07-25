@@ -1306,7 +1306,10 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	float time_spent_preparing <- 0 #s;
 	float total_preparing_time <- 600 #s;
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision when: !(self.has_belief(took_evac_decision));
-	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing;
+	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
+	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(at_target_port));	
+	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
+	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: rescue_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(at_target_port));
 	
 	//TODO: finire la fase di preparazione
 		/*
@@ -1334,8 +1337,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	predicate rescue_someone <- new_predicate("rescue someone");
 	predicate no_friend_needs_help <- new_predicate("no friend needs help");
-	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing;
-
+	predicate friend_is_here <- new_predicate("my friend is here");
 	People friend_to_rescue;
 
 	/*
@@ -1358,11 +1360,16 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			friend_to_rescue <- People(closest_friend_link.agent);			
 		}
 		else {do add_belief(no_friend_needs_help);}
-		
+	}
+	action get_to_port{
+		predicate my_current_intention <- predicate(get_predicate(get_current_intention()));
+		do remove_intention(my_current_intention, true);
+		do add_belief(going_to_port);		
 	}
 	plan go_rescue intention: rescue_someone {
 		if !empty(my_friends) and friend_to_rescue = nil {
 			do select_friend_to_help;
+			//TODO: se non ci sono amici da aiutare, faccio altro
 		}
 		else if friend_to_rescue != nil {
 			list<predicate> my_friends_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
@@ -1372,31 +1379,42 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				do goto target: friend_location on: road_network;
 			}
 			else{
-				if self distance_to(friend_to_rescue) < 150 #m {
-					ask friend_to_rescue {
-						//TODO: calmalo se ha paura
-						//TODO: se stava aspettando, digli di seguirti
-						//TODO: se stava facendo altro (e non stava già andando al porto), digli di andare al porto
+				if self distance_to(friend_to_rescue) < 10 #m {
+					//TODO: fai una condizione dopo la quale gli dice, bro, vai al porto (e poi tu smetti di aiutarlo e vai al porto)
+					bool friend_is_scared;
+					if friend_is_scared {
+						ask friend_to_rescue {do get_to_port;}	
+						do get_to_port;
 					}
-				}
-				if self distance_to(friend_to_rescue) < 150 #m {
-					ask friend_to_rescue {					
-						predicate my_current_intention <- predicate(get_predicate(get_current_intention()));
-						do remove_intention(my_current_intention, true);
-						do add_belief(going_to_port);
-					}	
-				}
-				else {
-					//TODO: aggiungi paura che non lo hai visto e non sai come sta					
+					else{
+						
+					}
+					
+				}		
+				else{
+					do get_to_port;
+					//TODO: can expand to emotions (e.g. fear of my friend not being safe)
 				}
 				
 			}
-			
+			if self distance_to(friend_to_rescue) < 150 #m and !(friend_to_rescue.has_belief(friend_is_here)){
+				ask friend_to_rescue {
+					do add_belief(friend_is_here);
+					//TODO: dì all'amico di fermarsi
+				}
+			}
+			if self distance_to(friend_to_rescue) < 10 #m {
+					//TODO: se stava aspettando, digli di seguirti
+			}									
 		}
-		else if empty(my_friends) {do add_belief(no_friend_needs_help);}	
+		else if empty(my_friends) {do add_belief(no_friend_needs_help);}
+		else if self.has_belief(no_friend_needs_help){
+			do get_to_port;
+		}	
 	}
 	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
+		//TODO: aggiungi che se si è gie preparato non deve prepararsi
 		//decision process
 		if self.has_emotion(fearEruption) {
 			float fear_intensity <- get_intensity(get_emotion(fearEruption));
@@ -1625,12 +1643,28 @@ species LawEnforcement parent: Human{
 		People person_to_warn <- person_seen.values["person"];
 		ask person_to_warn {
 			predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
-			if current_person_intention  != at_target_port and current_person_intention != in_target_port{
-				//write "DEBUG:" + myself.name + " - " + person_seen;
-				do remove_intention(current_person_intention , true);
-				do add_belief(going_to_port);
+			if has_emotion(fearEruption){
+				emotion fear_to_reduce <- get_emotion(fearEruption);
+				mental_state current_uncertainty <- get_uncertainty_op(self, Eruption);
+				write "uncertainty" + string(current_uncertainty) + " - strength: " + current_uncertainty.strength;
+				mental_state eruption_des <- get_desire_op(self, noEruption);
+				write "desire" + string(eruption_des) + " - strength: " + eruption_des.strength;
+				float fear_intensity <- get_intensity(get_emotion(fearEruption));
+				write myself.name + " - " + self.name + " Fear intensity 1: " + fear_intensity;
+				fear_intensity <- fear_intensity - 0.1; 
+				fear_to_reduce <- set_intensity(fear_to_reduce, fear_intensity); 
+				float fear_intensity_2 <- get_intensity(get_emotion(fearEruption));
+				write myself.name + " - " + self.name + "Fear intensity 2: " + fear_intensity_2;
+			}
+			else{
+				if current_person_intention  != at_target_port and current_person_intention != in_target_port{
+					//write "DEBUG:" + myself.name + " - " + person_seen;
+					do remove_intention(current_person_intention , true);
+					do add_belief(going_to_port);
+				}				
 			}
 		}
+		
 		do remove_intention(warn_person, true);
 	}
 	// TODO: quando c'è contagio emoozionale, fai che rassicura gli spaventati (o qualcosa del genere)
