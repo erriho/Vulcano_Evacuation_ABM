@@ -1369,7 +1369,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	plan go_rescue intention: rescue_someone {
 		if !empty(my_friends) and friend_to_rescue = nil {
 			do select_friend_to_help;
-			//TODO: se non ci sono amici da aiutare, faccio altro
 		}
 		else if friend_to_rescue != nil {
 			list<predicate> my_friends_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
@@ -1380,32 +1379,35 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			}
 			else{
 				if self distance_to(friend_to_rescue) < 10 #m {
-					//TODO: fai una condizione dopo la quale gli dice, bro, vai al porto (e poi tu smetti di aiutarlo e vai al porto)
+					//TODO: implementa l'essere impaurito o meno
 					bool friend_is_scared;
-					if friend_is_scared {
+					if !friend_is_scared {
+						//TODO: valuta se necessario modificare la velocità perché sia la stessa dei due amici (pari al minimo delle due)
 						ask friend_to_rescue {do get_to_port;}	
 						do get_to_port;
 					}
 					else{
-						
-					}
-					
+						//TODO: basa il fear reduction factor sul legame sociale
+						float fear_reduction_factor <- 0.01;
+						ask friend_to_rescue{
+							emotion fear_to_reduce <- get_emotion(fearEruption);
+							float fear_intensity <- get_intensity(get_emotion(fearEruption));
+							fear_intensity <- fear_intensity * (1-fear_reduction_factor); 
+							fear_to_reduce <- set_intensity(fear_to_reduce, fear_intensity); 
+						}
+					}	
 				}		
 				else{
 					do get_to_port;
-					//TODO: can expand to emotions (e.g. fear of my friend not being safe)
+					//TODO: can be expanded to emotions (e.g. fear of my friend not being safe)
 				}
-				
 			}
 			if self distance_to(friend_to_rescue) < 150 #m and !(friend_to_rescue.has_belief(friend_is_here)){
 				ask friend_to_rescue {
-					do add_belief(friend_is_here);
-					//TODO: dì all'amico di fermarsi
+					do add_belief(new_predicate("my friend is here", ["person"::myself]));
+					//TODO: da integrare nel piano wait_for_someone 
 				}
 			}
-			if self distance_to(friend_to_rescue) < 10 #m {
-					//TODO: se stava aspettando, digli di seguirti
-			}									
 		}
 		else if empty(my_friends) {do add_belief(no_friend_needs_help);}
 		else if self.has_belief(no_friend_needs_help){
@@ -1413,28 +1415,38 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		}	
 	}
 	
+	predicate at_safe_area <- new_predicate("going to evacuation infrastructure");
+	plan go_to_safe_area intention: at_safe_area {
+		point target_destination <- predicate(get_desire_op(self, at_safe_area)).values["target"];
+		do goto target: target_destination on: road_network;
+	}
+	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
-		//TODO: aggiungi che se si è gie preparato non deve prepararsi
+		//TODO: aggiungi che se si è gie preparato non deve prepararsi (messo nelle rules)
+		//TODO: aggiungi la comunicazione della decisione nei vari pezzi
 		//decision process
+		bool am_scared <- false;
 		if self.has_emotion(fearEruption) {
 			float fear_intensity <- get_intensity(get_emotion(fearEruption));
 			if fear_intensity >= 0.6 {
-				//TODO: make this line into a plan
-				do goto target: closest_to(EvacuationInfrastructure,self) on: road_network;
+				am_scared <- true;
+				//TODO: DEBUG IF THE PLAN IS CORRECTLY EXECUTED
+				//TODO: discutiamo se deve aggiungere anche questo alle cose da comunicare
+				do add_desire(new_predicate("going to evacuation infrastructure", ["target" :: closest_to(EvacuationInfrastructure,self)]));
+			}
+			else{
+				am_scared <- false;
 			}
 		}
-		if flip(1) {
+		if flip(1) and !am_scared {
 			do add_belief(going_to_port);
 		} 
 		/* 
 		else if self.name = "oh"{
-			if !(self.has_belief(no_friend_needs_help)):
-				do select_friend_to_help();
+			if !(self.has_belief(no_friend_needs_help)){
 				do add_belief(going_rescue_someone);
-			else:
-				predicate my_current_intention <- predicate(get_predicate(get_current_intention()));
-				do remove_intention(my_current_intention, true);
-				do add_belief(at_port);			
+			}
+			else {do get_to_port;}
 		}
 		else if self.name = "bah" {
 			do add_belief(waiting_for_someone);
