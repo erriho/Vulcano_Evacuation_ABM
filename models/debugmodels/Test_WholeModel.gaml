@@ -1307,9 +1307,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	float total_preparing_time <- 600 #s;
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision when: !(self.has_belief(took_evac_decision));
 	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
-	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(at_target_port));	
+	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: at_target_port when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(at_target_port));	
 	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
-	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: rescue_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(at_target_port));
+	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: rescue_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(rescue_someone ));
 	
 	//TODO: finire la fase di preparazione
 		/*
