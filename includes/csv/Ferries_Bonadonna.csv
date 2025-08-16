@@ -1,0 +1,5 @@
+name,capacity,cruising_speed,typology
+ferry - 1,200,50,ferry
+ferry - 2,400,50,ferry
+ferry - 3,600,50,ferry
+ferry - 4,800,50,ferry

@@ -28,8 +28,7 @@ global {
 	int nb_people_at_port; //done
 	int nb_people_who_left_the_island; //done
 		//people emotional status variable
-	//TODO: update the following in the code
-	//TODO: dobbiamo scegliere sopra che intensità uno ha paura o è gioioso
+	//TODO: dobbiamo scegliere sopra che intensità uno ha paura o è gioioso (poi a metterlo nel codice dove serve ci pensa Enrico)
 	int nb_joyous_people;
 	int nb_fearful_people;
 	int nb_alright_people;
@@ -41,7 +40,7 @@ global {
 	/*
 	 * LOADING DATA
 	 */
-	 //island geodata
+		//island geodata
 	file island_shp <- file("../../includes/Shapefiles/Island/Vulcano_Island.shp");
  	file lafossa_crater_shp <- file("../../includes/Shapefiles/Craters/LaFossaCrater.shp");
 	file roads_shp <- file("../../includes/Shapefiles/Roads/Vulcano_Roads_and_Paths_United_Cleaned.shp");
@@ -49,14 +48,16 @@ global {
  	file buildings_shp <- file("../../includes/Shapefiles/Buildings/Vulcano_Buildings.shp");
  	file waiting_areas_shp <- file("../../includes/Shapefiles/WaitingAreas/AreeAttesa.shp");
     geometry shape <- envelope(island_shp);
-    //ports and heliports data
+    	//ports and heliports data
 	file ports_shp <- file("../../includes/Shapefiles/Ports/Ports.shp");
 	file ports_data <- csv_file("../../includes/csv/Ports.csv");
 	matrix ports_data_matrix <- matrix(ports_data);
 	file heliports_shp <- file("../../includes/Shapefiles/Heliports/Heliports.shp");
 	file heliports_data <- csv_file("../../includes/csv/Heliports.csv");
 	matrix heliports_data_matrix <- matrix(heliports_data);
-	//TODO: add ferry and heli data 
+		//ferry data (helicopter data not supported yet)
+	file ferries_data <- csv_file("../../includes/csv/Ferries_Bonadonna.csv");
+	matrix ferries_data_matrix <- matrix(ferries_data);
 	/* 
 	 * PARAMETER INITIALIZIATION
 	 */
@@ -212,13 +213,14 @@ global {
 		 /*
 		  * CREATING PEOPLE
 		  */
-		create People number: 1 {
-			speed <- 30 #km/#h;
+		create People number: 50 {
+			walking_speed <- 30 #km/#h;
+			//walking_speed <- rnd(3.0,6.0,0.1) #km/#h;
 			view_dist <- 30 #m;
 			if flip(1/2) {location <- any_location_in(one_of(Buildings));}
 			else {location <- any_location_in(one_of(Roads));}
-			total_preparing_time <- truncated_gauss({preparing_time_avg, preparing_time_std})#s;
 			total_preparing_time <- 0 #s;
+			//total_preparing_time <- truncated_gauss({preparing_time_avg, preparing_time_std})#s;
     	}
     	//create social links
     	bool there_are_people_left <- true;
@@ -244,7 +246,8 @@ global {
     		}
     		loop person over: new_friends_circle {
     			loop my_friend over: new_friends_circle_copy {
-    				if my_friend.name != person.name {    					
+    				if my_friend.name != person.name {
+    					//TODO: credete sia meglio fare un'altra inizializzazione?    					
 	    				ask person {
 	    					social_link sl <- new_social_link(my_friend);
 	    					do add_social_link(sl);
@@ -281,7 +284,7 @@ global {
 		 /*
 		  * CREATING LAW ENFORCEMENT AGENTS
 		  */
-		create LawEnforcement number: 1 {
+		create LawEnforcement number: 20 {
 			float location_extraction <- rnd(1.0);
 			if location_extraction <= 0.80 {
 				float port_location_extraction <- rnd(1.0);
@@ -289,9 +292,10 @@ global {
 				else if port_location_extraction <= 0.80 + 0.15 {location <- (first_with(Port,each.name = "Molo di protezione civile di Gelso")).location;}
 				else {location <- (first_with(Port,each.name = "Molo di protezione civile di Ponente")).location;}
 			}
-			else if location_extraction <= 0.80 + 0.0 {/*TODO: add caserma dei carabinieri*/}
+			else if location_extraction <= 0.80 + 0.0 {/*caserma dei carabinieri (not supported yet)*/}
 			else {location <- any_location_in(one_of(road_network.vertices));}
-			speed <-  50#km/#h;	  	
+			walking_speed <- rnd(3.0,6.0,0.1) #km/#h;
+			vehicle_speed <- 25 #km/#h;
 			//area_to_presidiate_location <- one_of(Waiting_Areas).location;
 			//do add_desire(block_access); 		
 			do add_desire(on_duty_regular);
@@ -299,17 +303,15 @@ global {
 		 /*
 		  * CREATING FERRIES AND HELICOPTERS
 		  */
-		create Ferry number: 4 {
+		list<string> ferry_names_list <- ['ferry - 1', 'ferry - 2', 'ferry - 3', 'ferry - 4'];
+		create Ferry number: length(ferry_names_list) {
 			//DEBUG: evacuation_mode <- true;
 			//DEBUG: ready_to_evacuate <- true;
 			safe <- true;
-			cruising_speed <- 2000 #km/#h;
-			speed <- cruising_speed;
 			approach_distance <- 1 #km;
 			boarding_speed <- 1/(15#s);
 			unboarding_speed <- 1/(15#s);
 			max_waiting_time <- 3000 #s;
-			capacity <- 20;
 			location <- any_location_in(one_of(ferry_network.vertices));
 			loop port over: Port {
 				//DEBUG: write port.name;
@@ -330,17 +332,32 @@ global {
 				self.target_destination <- port.location;				
 			}
 		}
+		loop ferry over: Ferry {
+			string extracted_name <- one_of(ferry_names_list);
+			ferry.name <- extracted_name;
+			ferry_names_list >- extracted_name;
+		}
+		loop ferry over: Ferry {
+			loop row_index over: range(length(rows_list(ferries_data_matrix))-1) {
+				if ferry.name = string(ferries_data_matrix[0, row_index]) {
+					ferry.capacity <- int(ferries_data_matrix[1, row_index]);
+					ferry.cruising_speed <- float(ferries_data_matrix[2, row_index]);
+					ferry.speed <- ferry.cruising_speed;
+					//write port.name + " - " + port.max_EvacuationVehicles_capacity + " - " + port.max_people_capacity + " - " + port.location; 
+				}
+			}
+		}
 		create Helicopter number: 2 {
 			//DEBUG: evacuation_mode <- true;
 			//DEBUG: ready_to_evacuate <- true;
 			safe <- true;
-			cruising_speed <- 150 #km/#h;
+			cruising_speed <- 200 #km/#h;
 			speed <- 0 #km/#h;
 			approach_distance <- 100 #m;
 			boarding_speed <- 1/(15#s);
 			unboarding_speed <- 1/(15#s);
 			max_waiting_time <- 1200 #s;
-			capacity <- 5;
+			capacity <- 8;
 			Heliport base_heliport <- Heliport first_with(each.name = "Nave 1");
 			hub <- base_heliport;
 			hub_location <- hub.location;
@@ -958,7 +975,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
     	if eruption_engine_params_map = nil {
 			if eruption_type in ['0', '1a', '1b', '2a', '2b', '3', '4'] {
 				string load_path <- "../includes/json/eruption_default_params/eruption" + eruption_type + ".json";
-				//TODO: learn how to load from .json files
+				//(not supported yet) add support to load from .json files 
 				write "Loaded eruption_parameters_map from " + load_path;
 			}
 			else{
@@ -1129,7 +1146,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 					if exposition_model = "squared" {
 						if flip(float(intensity^2) / ((length(intensity_distribution))^2)) {
 							ask person {
-								//: insert personality in lifetime
+								//TODO: insert personality in (belief) lifetime 
 								int lifetime <- int((600 #s)*(myself.intensity+1)/step);
 								do add_belief(new_predicate("Boom", ["intensity" :: myself.intensity]), 1.0, lifetime);
 							}
@@ -1163,6 +1180,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	//enviornment-related variables
 	float view_dist;
 	float walking_speed <- 5 #km/#h;
+	float vehicle_speed <- 25 #km/#h;
 	//boarding-related variables
 	EvacuationInfrastructure place_to_evacuate_from;
 	Port port_to_evacuate_from;
@@ -1191,12 +1209,12 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			do current_intention_on_hold();				
 		}
 		port_to_evacuate_from <- Port closest_to(self);
-		do goto target: port_to_evacuate_from on: road_network;
+		do goto target: port_to_evacuate_from on: road_network speed: walking_speed;
 	}
 	
 	plan wait_to_board intention: in_target_port {
 		if location != port_to_evacuate_from.location {
-			do goto target: port_to_evacuate_from on: road_network;
+			do goto target: port_to_evacuate_from on: road_network speed: walking_speed;
 		}
 		else {
 			if !(self.has_belief(in_target_port)) {do add_belief(in_target_port);}
@@ -1267,7 +1285,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		//location <- boarded_vehicle.location; 
 		do goto target: boarded_vehicle.location speed: boarded_vehicle.speed on:ferry_network; //computes much faster
 	}
-	
+
  }
 /*
  * PEOPLE
@@ -1289,7 +1307,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		neurotism <- /*1.0;*/gauss(0.5,0.12);
 	}
 	
-	//TODO: MOVEMENT and EVACUATION
+	//MOVEMENT and EVACUATION
 	predicate enjoying_my_time <- new_predicate("enjoying my time");
 		
 	plan lets_wander intention: enjoying_my_time {
@@ -1298,26 +1316,30 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	predicate need_evac_decision <- new_predicate("need to take a decision on whether to evacuate");
 	predicate took_evac_decision <- new_predicate("took an evacuation decision");
-	predicate going_to_port <- new_predicate("decided to go to port"); 
-	predicate going_rescue_someone <- new_predicate("decided to go rescue someone");
-	predicate waiting_for_someone <- new_predicate("decided to wait for someone");
 	predicate preparing <- new_predicate("preparing to evacuate");
 	predicate prepared_to_evacuate <- new_predicate("prepared to evacuate");
 	float time_spent_preparing <- 0 #s;
 	float total_preparing_time <- 600 #s;
+	predicate going_to_port <- new_predicate("decided to go to port"); 
+	predicate rescue_someone <- new_predicate("rescue someone");
+	predicate going_rescue_someone <- new_predicate("decided to go rescue someone");
+	predicate wait_someone <- new_predicate("wait for someone to come here");
+	predicate waiting_for_someone <- new_predicate("decided to wait for someone");
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision when: !(self.has_belief(took_evac_decision));
 	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
 	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: at_target_port when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(at_target_port));	
 	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
 	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: rescue_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(rescue_someone ));
+	rule belief: waiting_for_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
+	rule belief: waiting_for_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: wait_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(rescue_someone ));
 	
 	//TODO: finire la fase di preparazione
 		/*
 		 * L'idea è un po' questa, una volta che decido cosa fare dopo aver ricevuto l'ordine di evacuazione:
-		 * - spendo del tempo a prepararmi
-		 * - questo tempo è da inizializzare in create come in Bonadonna
-		 * - sarà aumentato o diminuito di un coefficiente a seconda della cosa scelta (se scelgo di andare a cercare qualcuno ci metto di più)
-		 * - trascorso questo tempo farà la cosa che ha deciso di fare
+		 * - (implementato) spendo del tempo a prepararmi 
+		 * - (implementato) questo tempo è da inizializzare in create come in Bonadonna
+		 * - (manca, ma secondo voi è da fare?) questo tempo sarà aumentato o diminuito di un coefficiente a seconda della cosa scelta (se scelgo di andare a cercare qualcuno ci metto di più)
+		 * - (implementato) trascorso questo tempo farà la cosa che ha deciso di fare 
 		 */
 	plan prepare intention: preparing {
 		time_spent_preparing <- time_spent_preparing + step;
@@ -1331,27 +1353,29 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				do add_desire(rescue_someone);
 			}
 			else if self.has_belief(waiting_for_someone) {
+				do add_desire(wait_someone);
 			}
 		}
 	}
 	
-	predicate rescue_someone <- new_predicate("rescue someone");
 	predicate no_friend_needs_help <- new_predicate("no friend needs help");
 	predicate friend_is_here <- new_predicate("my friend is here");
+	predicate nobody_came <- new_predicate("no friend showed up");
 	People friend_to_rescue;
+	list<People> attempted_rescue_friends <- [];
 
-	/*
-	perceive target: friend_to_rescue when: friend_to_rescue != nil and self.has_intention(rescue_someone){		
-	}
-	*/
 	action select_friend_to_help {
 		list<string> help_statuses <- ["unknown", "waiting"];
 		list<People> friends_that_might_need_help;
-		//TODO: crea una lista dove hai le persone che sai già che non sono dove devono essere
 		list<predicate> my_friends_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
 		loop fr_stat over: my_friends_statuses {
 			if help_statuses contains fr_stat.values["status"] {
 				friends_that_might_need_help <+ my_friends first_with(each.name = fr_stat.values["name"]);
+			}
+		}
+		if !empty(attempted_rescue_friends) {
+			loop friend over: friends_that_might_need_help {
+				if attempted_rescue_friends contains friend {friends_that_might_need_help >- friend;}
 			}
 		}
 		if !empty(friends_that_might_need_help) {
@@ -1367,6 +1391,10 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		do add_belief(going_to_port);		
 	}
 	plan go_rescue intention: rescue_someone {
+		if !(self.my_communicated_statuses contains "rescuing") {
+			do add_subintention(get_current_intention(), communicate_status, true);	
+			do current_intention_on_hold();				
+		}
 		if !empty(my_friends) and friend_to_rescue = nil {
 			do select_friend_to_help;
 		}
@@ -1374,17 +1402,16 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			list<predicate> my_friends_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
 			point friend_location <- (my_friends_statuses first_with ((each).values["name"] = friend_to_rescue.name)).values["location"];
 			if self.location != friend_location {
-				//TODO: update with agent being faster
-				do goto target: friend_location on: road_network;
+				do goto target: friend_location on: road_network speed: walking_speed*1.5;
 			}
 			else{
 				if self distance_to(friend_to_rescue) < 10 #m {
-					//TODO: implementa l'essere impaurito o meno
 					bool friend_is_scared;
+					//TODO: implementa l'essere impaurito o meno, cioè sopra che soglia l'amico è impaurito?
 					if !friend_is_scared {
-						//TODO: valuta se necessario modificare la velocità perché sia la stessa dei due amici (pari al minimo delle due)
 						ask friend_to_rescue {do get_to_port;}	
 						do get_to_port;
+						//it would be cool to change speed so that they follow each other (e.g set speed to the minumum of their walking speed)
 					}
 					else{
 						//TODO: basa il fear reduction factor sul legame sociale
@@ -1398,57 +1425,70 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 					}	
 				}		
 				else{
+					attempted_rescue_friends <+ friend_to_rescue;
 					do get_to_port;
-					//TODO: can be expanded to emotions (e.g. fear of my friend not being safe)
+					//can be expanded to emotions (e.g. fear of my friend not being safe)
 				}
 			}
 			if self distance_to(friend_to_rescue) < 150 #m and !(friend_to_rescue.has_belief(friend_is_here)){
 				ask friend_to_rescue {
-					do add_belief(new_predicate("my friend is here", ["person"::myself]));
-					//TODO: da integrare nel piano wait_for_someone 
+					do add_belief(new_predicate("my friend is here", ["person"::myself])); 
 				}
 			}
 		}
-		else if empty(my_friends) {do add_belief(no_friend_needs_help);}
-		else if self.has_belief(no_friend_needs_help){
+		else if empty(my_friends) and !self.has_belief(no_friend_needs_help) {do add_belief(no_friend_needs_help);}
+		else if self.has_belief(no_friend_needs_help){do get_to_port;}	
+	}
+	float maximum_waiting_time <- rnd(3600, 18000, 600) #s; //TODO: vogliamo rendere anche questo dipendente dalla personalità?
+	float time_spent_waiting_for_someone_to_come <- 0 #s;
+	plan wait_for_someone intention: wait_someone {
+		if !(self.my_communicated_statuses contains "waiting") {
+			do add_subintention(get_current_intention(), communicate_status, true);	
+			do current_intention_on_hold();				
+		}
+		time_spent_waiting_for_someone_to_come <- time_spent_waiting_for_someone_to_come + step;
+		//TODO: si mette che se ha il belief che c'è un amico diventa meno pauroso?
+		if !self.has_belief(friend_is_here) and time_spent_waiting_for_someone_to_come > maximum_waiting_time {
+			do add_belief(nobody_came);
 			do get_to_port;
-		}	
+		}
 	}
 	
 	predicate at_safe_area <- new_predicate("going to evacuation infrastructure");
 	plan go_to_safe_area intention: at_safe_area {
 		point target_destination <- predicate(get_desire_op(self, at_safe_area)).values["target"];
-		do goto target: target_destination on: road_network;
+		do goto target: target_destination on: road_network speed: walking_speed;
 	}
 	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
-		//TODO: aggiungi che se si è gie preparato non deve prepararsi (messo nelle rules)
-		//TODO: aggiungi la comunicazione della decisione nei vari pezzi
 		//decision process
 		bool am_scared <- false;
 		if self.has_emotion(fearEruption) {
 			float fear_intensity <- get_intensity(get_emotion(fearEruption));
 			if fear_intensity >= 0.6 {
 				am_scared <- true;
-				//TODO: DEBUG IF THE PLAN IS CORRECTLY EXECUTED
-				//TODO: discutiamo se deve aggiungere anche questo alle cose da comunicare
+				//TODO: MANCA DA FARE IL DEBUG IF THE PLAN IS CORRECTLY EXECUTED
+				//TODO: discutiamo se deve aggiungere anche questo alle cose da comunicare (cioè dico agli amici che sto andando alla safe area), per me anche no
 				do add_desire(new_predicate("going to evacuation infrastructure", ["target" :: closest_to(EvacuationInfrastructure,self)]));
 			}
 			else{
 				am_scared <- false;
 			}
 		}
+		//TODO: scrivere le condizioni che portano alle varie decisioni
+		//NOTA BENE: poiché aspettare qualcuno prende un sacco, ma veramente un sacco di tempo, va fatto in modo che non sia possibile sceglierlo se non al primo round decisionale
+			//IDEA: basta mettere nell'if che attiva il belief di aspettare l'amico un "and if empty(my_communicated_statuses)" in quanto solo all'inizio non avrà mai comunicato niente
 		if flip(1) and !am_scared {
 			do add_belief(going_to_port);
 		} 
 		/* 
-		else if self.name = "oh"{
+		else if MANCA CRITERIO DECISIONALE {
 			if !(self.has_belief(no_friend_needs_help)){
 				do add_belief(going_rescue_someone);
 			}
 			else {do get_to_port;}
 		}
-		else if self.name = "bah" {
+		else if MANCA CRITERIO DECISIONALE {
 			do add_belief(waiting_for_someone);
 		}	
 		* 
@@ -1456,8 +1496,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		int decision_lifetime <- int(max([300#s/step,1200#s/step*conscientiousness]));
 		do add_belief(took_evac_decision, 1.0, decision_lifetime);
 	}
-	//TODO: SOCIAL LINKS
-		//c'è solo da scegliere come inizializzarli, volendo fare un reflex per mostrare le reti sociali ma credo sia una perdita di tempo
+	//SOCIAL LINKS
 	list<People> my_friends;
 	predicate friend_status;
 	
@@ -1487,24 +1526,23 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		//write "DEBUG: " + self.name + " has updated belief base of " + my_friends;
 	}
 
-	//TODO: EMOTIONs
+	//EMOTIONs
 	emotion joyPort <- new_emotion("joy", in_target_port);
 	//Ilaria: SE SONO AL PORTO E VOGLIO ESSERE AL PORTO SONO FELICE, E COSA FACCIO SE SONO FELICE?
 		//Enrico: secondo me niente, farei solo che se sei felice contagi gli altri calmando la paura se ti percepiscono
 	//Ilaria: CI SAREBBE DA AGGIUNGERE HAPPY FOR E SORRY FOR 
 		//Enrico: sono d'accordo, ma forse non è immediato, ci penso su
 	
-	//TODO: EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
+	//EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
 	predicate noEruption <- new_predicate("Eruption",false);
 	predicate Eruption <- new_predicate("Eruption");
 	emotion fearEruption <- new_emotion("fear", Eruption);
-	//TODO: discutiamone
 	rule emotion:fearEruption new_desire: need_evac_decision remove_intention:enjoying_my_time remove_desire:enjoying_my_time when: (self.is_current_intention(enjoying_my_time) and !(self.has_belief(took_evac_decision)) and get_intensity(self.get_emotion(fearEruption)) > 0.3);
 		//response to boom sounds
 	int max_perceived_boom_intensity <- 18; //TODO: make this value dependent also on personality (we could do so in the reflex so to leave this parameter on its own)
 	float perceived_boom_coefficient <- 0.0;
 	predicate boomHeard <- new_predicate("Boom");
-	//rule belief: boomHeard new_uncertainty:Eruption strength: perceived_boom_coefficient when: not has_belief(Eruption);
+	//DEPRECATED: rule belief: boomHeard new_uncertainty:Eruption strength: perceived_boom_coefficient when: not has_belief(Eruption);
 	
 	reflex update_intensity when: self.has_belief(boomHeard) {
 		int perceived_boom_intensity <- 0;
@@ -1541,32 +1579,19 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		}
 	}
 	
-
-
-	//TODO: EMOTIONAL CONTAGION
-
+	//TODO: EMOTIONAL CONTAGION (non so se c'è da fare qualcosa qua, forse sì)
 	float uncertaintyConversion <- 0.25;
 
-		perceive target:People in:view_dist{
-
+	perceive target:People in:view_dist{
 		if(has_belief(Eruption) and not myself.has_belief(Eruption)){
-
 			focus id:"Eruption" strength: uncertaintyConversion is_uncertain:true;
-
 //			ask myself{
-
 //				do add_uncertainty(predicate:fireSaw,strength: uncertaintyConversion);
-
 //			}
-
 		}
-
 	}		
 
-	
-
 	float contagionThreshold <- 0.5 parameter: true;
-
 	People perceivedOther <- nil;
 
 	perceive target: People in:view_dist parallel:false{
@@ -1604,16 +1629,17 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	} 
 	VORREI CHE QUESTO FOSSE UN MODO PER CALMARSI QUANDO SI VEDONO LE FORSE DELL'ORDINE */
 
-	//TODO: EMOTIONAL CONTAGION
-
+	//ASPECT CUSTOMIZATION
 	aspect default {
 		draw triangle(5) rotate: heading + 90 color: color border: #black;
 		draw circle(view_dist) color: color border: #black wireframe: true;
 	}
 }
+
 /*
- * TODO: FORZE ORDINE
+ * LAW ENFORCEMENT AGENT (LEA)
  */
+ 
 species LawEnforcement parent: Human{
 	rgb color <- #green;
 	point area_to_presidiate_location;
@@ -1636,7 +1662,7 @@ species LawEnforcement parent: Human{
 	}
 	
 	plan block_paths intention: block_access {
-        do goto target: area_to_presidiate_location on: road_network;
+        do goto target: area_to_presidiate_location on: road_network speed: vehicle_speed;
         if (self distance_to(area_to_presidiate_location) < 10 #m) { 
             do add_belief(new_predicate("reached patrol area", ["location_value"::area_to_presidiate_location]));
             do remove_intention(block_access, true);            
@@ -1658,15 +1684,17 @@ species LawEnforcement parent: Human{
 			if has_emotion(fearEruption){
 				emotion fear_to_reduce <- get_emotion(fearEruption);
 				mental_state current_uncertainty <- get_uncertainty_op(self, Eruption);
-				write "uncertainty" + string(current_uncertainty) + " - strength: " + current_uncertainty.strength;
+				// write "DEBUG: uncertainty" + string(current_uncertainty) + " - strength: " + current_uncertainty.strength;
 				mental_state eruption_des <- get_desire_op(self, noEruption);
-				write "desire" + string(eruption_des) + " - strength: " + eruption_des.strength;
+				//write "DEBUG: desire" + string(eruption_des) + " - strength: " + eruption_des.strength;
 				float fear_intensity <- get_intensity(get_emotion(fearEruption));
-				write myself.name + " - " + self.name + " Fear intensity 1: " + fear_intensity;
-				fear_intensity <- fear_intensity - 0.1; 
+				// write "DEBUG: " + myself.name + " - " + self.name + " Fear intensity 1: " + fear_intensity;
+				float fear_reduction_factor <- 0.01;
+				//TODO: basa il fear reduction factor sulla personalità di person_to_warn
+				fear_intensity <- fear_intensity * (1 - fear_reduction_factor); 
 				fear_to_reduce <- set_intensity(fear_to_reduce, fear_intensity); 
-				float fear_intensity_2 <- get_intensity(get_emotion(fearEruption));
-				write myself.name + " - " + self.name + "Fear intensity 2: " + fear_intensity_2;
+				// float fear_intensity_2 <- get_intensity(get_emotion(fearEruption));
+				// write "DEBUG: " + myself.name + " - " + self.name + "Fear intensity 2: " + fear_intensity_2;
 			}
 			else{
 				if current_person_intention  != at_target_port and current_person_intention != in_target_port{
@@ -1679,7 +1707,6 @@ species LawEnforcement parent: Human{
 		
 		do remove_intention(warn_person, true);
 	}
-	// TODO: quando c'è contagio emoozionale, fai che rassicura gli spaventati (o qualcosa del genere)
 	
 	//alert people of evacuation 
 	float alert_destination_min_distance <- 500 #m;
@@ -1702,7 +1729,7 @@ species LawEnforcement parent: Human{
 		
 		predicate target_belief <- predicate(get_predicate(get_belief_with_name("current target")));
 		point target_location <- target_belief.values["destination"];
-		do goto target: target_location on: road_network;
+		do goto target: target_location on: road_network speed: vehicle_speed;
 
 		if self.has_belief(perceived_person_to_alert) {
 			do add_subintention(get_current_intention(), alert_person, true);
@@ -1764,12 +1791,12 @@ species LawEnforcement parent: Human{
 		//write "DEBUG: " + self.name + "Leaving Island.";
 		list<EvacuationInfrastructure> PortsHeliports <- list(Port) + list(Heliport);
 		place_to_evacuate_from <- PortsHeliports closest_to(self);
-		do goto target: place_to_evacuate_from on: road_network;
+		do goto target: place_to_evacuate_from on: road_network speed: vehicle_speed;
 	}
 	
 	plan wait_to_leave_island intention: lets_leave {
 		if location != place_to_evacuate_from.location {
-			do goto target: place_to_evacuate_from on: road_network;
+			do goto target: place_to_evacuate_from on: road_network speed: walking_speed;
 		}
 		else {
 			if self in place_to_evacuate_from.people_waiting_list = false and boarded_vehicle = nil{
