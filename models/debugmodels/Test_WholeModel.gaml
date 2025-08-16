@@ -478,7 +478,7 @@ species EvacuationInfrastructure {
 					self.boarded_vehicle <- EvacuationVehicle(vehicle); 
 					self.boarded <- true; //this will activate a reflex in the person agent that make it follow the vehicle
 					do add_belief(left_the_island);
-					if !(self.my_communicated_statuses contains "on board") {
+					if !(last(self.my_communicated_statuses) = "on board") {
 						do add_subintention(get_current_intention(), communicate_status, true);		
 						do current_intention_on_hold();							
 			}
@@ -1204,7 +1204,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	
 	plan go_to_nearest_port intention: at_target_port {
-		if !(self.my_communicated_statuses contains "going to port") {
+		if !(last(self.my_communicated_statuses) = "going to port") {
 			do add_subintention(get_current_intention(), communicate_status, true);	
 			do current_intention_on_hold();				
 		}
@@ -1225,7 +1225,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			}
 		}
 		if location = port_to_evacuate_from.location and People contains self {
-			if !(self.my_communicated_statuses contains "at port") {
+			if !(last(self.my_communicated_statuses) = "at port") {
 				do add_subintention(get_current_intention(), communicate_status, true);		
 				do current_intention_on_hold();							
 			}
@@ -1391,7 +1391,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		do add_belief(going_to_port);		
 	}
 	plan go_rescue intention: rescue_someone {
-		if !(self.my_communicated_statuses contains "rescuing") {
+		if !(last(self.my_communicated_statuses) = "rescuing") {
 			do add_subintention(get_current_intention(), communicate_status, true);	
 			do current_intention_on_hold();				
 		}
@@ -1442,7 +1442,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	float maximum_waiting_time <- rnd(3600, 18000, 600) #s; //TODO: vogliamo rendere anche questo dipendente dalla personalità?
 	float time_spent_waiting_for_someone_to_come <- 0 #s;
 	plan wait_for_someone intention: wait_someone {
-		if !(self.my_communicated_statuses contains "waiting") {
+		if !(last(self.my_communicated_statuses) = "waiting") {
 			do add_subintention(get_current_intention(), communicate_status, true);	
 			do current_intention_on_hold();				
 		}
