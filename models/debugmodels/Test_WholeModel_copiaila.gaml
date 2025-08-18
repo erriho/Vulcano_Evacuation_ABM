@@ -1158,6 +1158,8 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		do add_desire(enjoying_my_time);
 		do add_desire(noEruption, 1.0);
 		
+		do add_desire(no_friend_needs_help);
+		
 		openness <- /*1.0;*/gauss(0.5,0.12);	
 		conscientiousness <- /*1.0;*/gauss(0.5,0.12); 
 		extroversion <- /*1.0;*/gauss(0.5,0.12);
@@ -1201,8 +1203,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				do add_belief(prepared_to_evacuate);	
 			}
 			else if self.has_belief(going_rescue_someone) {
+				
 			}
 			else if self.has_belief(waiting_for_someone) {
+				
+				
 			}
 		}
 	}
@@ -1230,9 +1235,10 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		if !empty(friends_that_might_need_help) {
 			list<social_link> friends_that_need_help_links <- self.social_link_base where (friends_that_might_need_help contains each.agent);
 			social_link closest_friend_link <- friends_that_need_help_links first_with ((each.liking+each.familiarity) >= friends_that_need_help_links max_of(each.liking+each.familiarity));
-			friend_to_rescue <- People(closest_friend_link.agent);			
+			friend_to_rescue <- People(closest_friend_link.agent);	
 		}
-		else {do add_belief(no_friend_needs_help);}
+		else {do add_belief(no_friend_needs_help);
+		}
 		
 	}
 	plan go_rescue intention: rescue_someone {
@@ -1324,6 +1330,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	emotion HappyFor <- new_emotion("happy for", in_target_port);
 
+	
 	//TODO: EMOTIONs
 	emotion joyPort <- new_emotion("joy", in_target_port);
 	//Ilaria: SE SONO AL PORTO E VOGLIO ESSERE AL PORTO SONO FELICE, E COSA FACCIO SE SONO FELICE?
