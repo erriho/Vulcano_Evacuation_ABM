@@ -1420,6 +1420,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 						//TODO: basa il fear reduction factor sul legame sociale
 						//deve dipendere dalla sua D (dalla D dell'amico che salva)
 						float fear_reduction_factor <- 0.001; 
+						//TODO: capire come richiamare la dominance
+						//float dominance <- each.dominance;
+						//float fear_reduction_factor <- (0.001 * dominance); 
 						ask friend_to_rescue{
 							emotion fear_to_reduce <- get_emotion(fearEruption);
 							float fear_intensity <- get_intensity(get_emotion(fearEruption));
@@ -1443,10 +1446,16 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		else if empty(my_friends) and !self.has_belief(no_friend_needs_help) {do add_belief(no_friend_needs_help);}
 		else if self.has_belief(no_friend_needs_help){do get_to_port;}	
 	}
-	float maximum_waiting_time <- rnd(3600, 18000, 600) #s; //TODO: vogliamo rendere anche questo dipendente dalla personalità? CI STA 
+	//float maximum_waiting_time <- rnd(3600, 18000, 600) #s; //TODO: vogliamo rendere anche questo dipendente dalla personalità? CI STA 
+	float maximum_waiting_time <-  float(3 * (max([300#s/step,1200#s/step*conscientiousness]))); 
+	//TODO: modificare il fattore 3 per avere un tempo ragionevole 
+	//altrimenti: tre ore modulato con la conscioussness, se è impulsivo aspetta un'ora e mezzo se è molto coscienzioso aspetta quattro ore e mezzo 
+	//float maximum_waiting_time <- (10800 * (0.5 + conscientiousness)) #s;
+	
 	float time_spent_waiting_for_someone_to_come <- 0 #s;
 	
 	plan wait_for_someone intention: wait_someone {
+		do remove_belief(took_evac_decision);
 		if !(last(self.my_communicated_statuses) = "waiting") {
 			do add_subintention(get_current_intention(), communicate_status, true);	
 			do current_intention_on_hold();				
@@ -1467,6 +1476,38 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
 		//decision process
+		bool taking_decision <- false;
+		if extroversion>= 0.8 and empty(my_communicated_statuses) and !taking_decision {
+			taking_decision <- true;
+			do add_belief(waiting_for_someone);
+			//TODO: mettere il lifetime infinito a questo belief, cosi non cambai idea mentre sta aspettando
+		}
+		else if self.has_emotion(fearEruption) and !taking_decision{
+			taking_decision <- true;
+			float fear_intensity <- get_intensity(get_emotion(fearEruption));
+			if fear_intensity >= 0.6 and extroversion < 0.8 {
+				do add_desire(new_predicate("going to evacuation infrastructure", ["target" :: closest_to(EvacuationInfrastructure,self)]));
+			}
+			if fear_intensity < 0.6 and agreeableness < 0.6 {
+				do add_belief(going_to_port);
+			}
+			if fear_intensity < 0.6 and agreeableness >= 0.6 {
+				do add_belief(going_rescue_someone);
+			}	
+		
+		}		
+		else if !self.has_emotion(fearEruption) and !taking_decision{
+			taking_decision <- true;			
+			if agreeableness < 0.6 {
+				do add_belief(going_to_port);
+			}
+			if agreeableness >= 0.6 {
+				do add_belief(going_rescue_someone);
+			}	
+		}
+		
+		
+		/* 
 		bool am_scared <- false;
 		if self.has_emotion(fearEruption) {
 			float fear_intensity <- get_intensity(get_emotion(fearEruption));
@@ -1499,6 +1540,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		}	
 		* 
 		*/
+		
 		int decision_lifetime <- int(max([300#s/step,1200#s/step*conscientiousness]));
 		do add_belief(took_evac_decision, 1.0, decision_lifetime);
 	}
@@ -1550,7 +1592,8 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	emotion fearEruption <- new_emotion("fear", Eruption);
 	rule emotion:fearEruption new_desire: need_evac_decision remove_intention:enjoying_my_time remove_desire:enjoying_my_time when: (self.is_current_intention(enjoying_my_time) and !(self.has_belief(took_evac_decision)) and get_intensity(self.get_emotion(fearEruption)) > 0.3);
 		//response to boom sounds
-	int max_perceived_boom_intensity <- 18; //TODO: make this value dependent also on personality (we could do so in the reflex so to leave this parameter on its own)
+	//int max_perceived_boom_intensity <- 18; //TODO: make this value dependent also on personality (we could do so in the reflex so to leave this parameter on its own)
+	float max_perceived_boom_intensity <- (18 * (0.5 + neurotism)); //avremmo pero messo come float anzichè int visto che si moltiplica per numeri con virgola, rompe tutto?
 	float perceived_boom_coefficient <- 0.0;
 	predicate boomHeard <- new_predicate("Boom");
 	//DEPRECATED: rule belief: boomHeard new_uncertainty:Eruption strength: perceived_boom_coefficient when: not has_belief(Eruption);
@@ -1702,7 +1745,8 @@ species LawEnforcement parent: Human{
 				//write "DEBUG: desire" + string(eruption_des) + " - strength: " + eruption_des.strength;
 				float fear_intensity <- get_intensity(get_emotion(fearEruption));
 				// write "DEBUG: " + myself.name + " - " + self.name + " Fear intensity 1: " + fear_intensity;
-				float fear_reduction_factor <- 0.001;
+				//float fear_reduction_factor <- 0.001;
+				float fear_reduction_factor <- (0.001 * max(0.1, neurotism));
 				//TODO: basa il fear reduction factor sulla personalità di person_to_warn
 				fear_intensity <- fear_intensity * (1 - fear_reduction_factor); 
 				fear_to_reduce <- set_intensity(fear_to_reduce, fear_intensity); 
