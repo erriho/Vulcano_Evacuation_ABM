@@ -1248,7 +1248,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				}			
 				int nb_cf_safe <- 0;
 				loop cf_status over: my_close_friends_statuses {
-					if cf_status.values["status"] = 'at port' or 'on board' {
+					if cf_status.values["status"] = 'at port' or cf_status.values["status"] = 'on board' {
 						nb_cf_safe <- nb_cf_safe + 1;
 					}
 				} 
