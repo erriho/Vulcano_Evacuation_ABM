@@ -1409,19 +1409,27 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			}
 			else{
 				if self distance_to(friend_to_rescue) < 10 #m {
-					bool friend_is_scared;
-					//TODO: implementa l'essere impaurito o meno, cioè sopra che soglia l'amico è impaurito?
+					bool friend_is_scared <- false;
+					float fear_intensity;
+					ask friend_to_rescue{
+						if self.has_emotion(fearEruption) {
+							fear_intensity <- get_intensity(get_emotion(fearEruption));
+						}
+						else{fear_intensity <- 0.0;}
+					}
+					if fear_intensity >= 0.5 {friend_is_scared <- true;}
 					if !friend_is_scared {
 						ask friend_to_rescue {do get_to_port;}	
 						do get_to_port;
 						//it would be cool to change speed so that they follow each other (e.g set speed to the minumum of their walking speed)
 					}
 					else{
-						//TODO: basa il fear reduction factor sul legame sociale
-						float fear_reduction_factor <- 0.01;
 						ask friend_to_rescue{
+							social_link sl_with_rescuer <- first(self.social_link_base where (each.agent = myself));
+							float dominance <- get_dominance(sl_with_rescuer);
+							float fear_reduction_factor <- 0.001 * max(0.1, dominance);
+							//TODO: debug this
 							emotion fear_to_reduce <- get_emotion(fearEruption);
-							float fear_intensity <- get_intensity(get_emotion(fearEruption));
 							fear_intensity <- fear_intensity * (1-fear_reduction_factor); 
 							fear_to_reduce <- set_intensity(fear_to_reduce, fear_intensity); 
 						}
@@ -1695,8 +1703,7 @@ species LawEnforcement parent: Human{
 				//write "DEBUG: desire" + string(eruption_des) + " - strength: " + eruption_des.strength;
 				float fear_intensity <- get_intensity(get_emotion(fearEruption));
 				// write "DEBUG: " + myself.name + " - " + self.name + " Fear intensity 1: " + fear_intensity;
-				float fear_reduction_factor <- 0.01;
-				//TODO: basa il fear reduction factor sulla personalità di person_to_warn
+				float fear_reduction_factor <- 0.001 * max(0.1, neurotism);
 				fear_intensity <- fear_intensity * (1 - fear_reduction_factor); 
 				fear_to_reduce <- set_intensity(fear_to_reduce, fear_intensity); 
 				// float fear_intensity_2 <- get_intensity(get_emotion(fearEruption));
