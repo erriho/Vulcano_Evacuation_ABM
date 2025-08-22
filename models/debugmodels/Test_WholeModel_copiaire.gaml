@@ -1237,16 +1237,71 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		//people	
 		if People contains self {
 			People me <- People(self);
-			list<People> friends_I_worry_about <- list<People>((self.social_link_base where (each.liking > 0.8)) collect each.agent);
-			if !empty(friends_I_worry_about) {
-				list<predicate> my_friend_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
-				list<predicate> my_close_friends_statuses <- [];
-				loop close_friend over: friends_I_worry_about {
-					predicate close_friend_status <- my_friend_statuses first_with ((each).values["name"] = close_friend.name);
-					my_close_friends_statuses <+ close_friend_status; 
-				}			
-				loop cf_status over: my_close_friends_statuses {
-					if cf_status.values["status"] = 'unknown' {
+			//if joyport > 0.7 -> mi imbarco e fare in modo di non entrare negli altri if  con una var booleana 
+			bool taking_decision_to_board <- false;
+			if self.has_emotion(joyPort) and !taking_decision_to_board{
+				taking_decision_to_board <- true;
+				float joy_intensity <- get_intensity(get_emotion(joyPort));
+				if joy_intensity >= 0.7{
+					boarding_decision <- true;
+					}
+			}
+			else if !taking_decision_to_board{
+			//abbiamo aggiornato soglia di liking modificata a 0.5
+				list<People> friends_I_worry_about <- list<People>((self.social_link_base where (each.liking > 0.5)) collect each.agent);
+				if !empty(friends_I_worry_about) {
+					list<predicate> my_friend_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
+					list<predicate> my_close_friends_statuses <- [];
+					loop close_friend over: friends_I_worry_about {
+						predicate close_friend_status <- my_friend_statuses first_with ((each).values["name"] = close_friend.name);
+						my_close_friends_statuses <+ close_friend_status; 
+					}
+						 
+				//inizializzare una lista di var booleane lunga come my_close_friends_statuses
+				//fare il loop sui predicati di questa lista : se lo stato è "at port" o "on board" mettere True, altrimenti False nella nuova lista
+				//if con altre due condizioni su joyport * conteggio amici T e F
+				//conteggio: fare loop	su nuova lista contando i True e False , a fine del conteggio metti if con percentuale di true con cui mi imbarco 
+				
+					//create a list with bool values
+					list<bool> my_close_friends_statuses_bool <- [];	
+					loop close_friend_bool over: my_close_friends_statuses {
+						//se vlore estratto in board o altro metti close_friend_bool <- true 
+						bool close_friend_status_bool;
+						//non uso correttamente la variabile che scorre sui predicati close_friend_bool help 
+						if my_close_friends_statuses.values["status"] = 'at port' or my_close_friends_statuses.values["status"] = 'on board'{ //predicate = on board or predicate = at port allora vai
+							close_friend_status_bool <- true;
+						
+						}
+						else if { 
+							close_friend_status_bool <- false;
+						}
+						my_close_friends_statuses_bool <+ close_friend_status_bool; 
+					 }	
+					 //calculating percentage of true and false values
+					 //la percentuale chiamata dopo "perc_friends" deve essere la percentuale dei true 
+					 
+					 //...
+					 
+					 if self.has_emotion(joyPort) {
+						float joy_intensity <- get_intensity(get_emotion(joyPort));
+						if joy_intensity < 0.7 and joy_intensity >= 0.3 and perc_friends >= 0.5{ 
+							boarding_decision <- true;
+							}
+						else if joy_intensity < 0.7 and joy_intensity >= 0.3 and perc_friends < 0.5{ 
+							boarding_decision <- false;
+							}
+						else if joy_intensity < 0.3 and perc_friends >= 0.7{ 
+							boarding_decision <- true;
+							}
+						else if joy_intensity < 0.3 and perc_friends < 0.7{ 
+							boarding_decision <- false;
+							}
+					}
+					
+				//se non ha joyPort che succ?
+				/* 
+					loop cf_status over: my_close_friends_statuses {
+						if cf_status.values["status"] = 'unknown' {
 						//TODO: design this part
 						/*
 						 * Dobbiamo decidere tante cose:
@@ -1256,24 +1311,27 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 						 * 4) Perché ste domande se le fa ora e non quando si è avvicinato al porto?
 						 * 
 						 * idea: per usare my_close_friends_statuses, se piu della meta della lista di amici è nella decisione di evacuare o gia evacuato dico di si 
-						 */
-						write self.name + " is waiting for " + cf_status.values["name"];
-						boarding_decision <- true;
-					}
-					else if cf_status.values["status"] = 'at port'{
-						boarding_decision <- true;
-					}
-					else if cf_status.values["status"] = 'rescuing'{
-						boarding_decision <- true;
-					}
-					else {
-						boarding_decision <- true;
-					}
-				} 
-			}
-			else {
-				boarding_decision <- true;				
-			}		
+						 *
+							write self.name + " is waiting for " + cf_status.values["name"];
+							boarding_decision <- true;
+						}
+						else if cf_status.values["status"] = 'at port'{
+							boarding_decision <- true;
+						}
+						else if cf_status.values["status"] = 'rescuing'{
+							boarding_decision <- true;
+						}
+						else {
+							boarding_decision <- true;
+						}
+					} 
+					
+					*/
+				}
+				else {
+					boarding_decision <- true;				
+				}	
+			}	
 		}
 		//LawEnforcement
 		else {
