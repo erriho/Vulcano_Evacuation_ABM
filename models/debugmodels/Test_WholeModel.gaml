@@ -1457,7 +1457,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			do current_intention_on_hold();				
 		}
 		time_spent_waiting_for_someone_to_come <- time_spent_waiting_for_someone_to_come + step;
-		//TODO: si mette che se ha il belief che c'è un amico diventa meno pauroso?
 		if !self.has_belief(friend_is_here) and time_spent_waiting_for_someone_to_come > maximum_waiting_time {
 			do add_belief(nobody_came);
 			do get_to_port;
@@ -1472,41 +1471,36 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
 		//decision process
-		//TODO: va rimossa se esistente l'attuale piano
-		
-		bool am_scared <- false;
-		if self.has_emotion(fearEruption) {
+		//TODO: va rimosso se esistente l'attuale piano? oppure ci pensa la rule (meglio)
+		//TODO: MANCA DA FARE IL DEBUG IF THE PLAN IS CORRECTLY EXECUTED
+		if extroversion >= 0.8 and empty(my_communicated_statuses) {
+			do add_belief(waiting_for_someone);
+		}
+		else if self.has_emotion(fearEruption) {
 			float fear_intensity <- get_intensity(get_emotion(fearEruption));
 			if fear_intensity >= 0.6 {
-				am_scared <- true;
-				//TODO: MANCA DA FARE IL DEBUG IF THE PLAN IS CORRECTLY EXECUTED
-				//TODO: discutiamo se deve aggiungere anche questo alle cose da comunicare (cioè dico agli amici che sto andando alla safe area), per me anche no
 				do add_desire(new_predicate("going to evacuation infrastructure", ["target" :: closest_to(EvacuationInfrastructure,self)]));
 			}
 			else{
-				am_scared <- false;
+				if agreeableness >= 0.6 {do add_belief(going_rescue_someone);}
+				else {do add_belief(going_to_port);}
 			}
 		}
-		//TODO: scrivere le condizioni che portano alle varie decisioni
-		//NOTA BENE: poiché aspettare qualcuno prende un sacco, ma veramente un sacco di tempo, va fatto in modo che non sia possibile sceglierlo se non al primo round decisionale
-			//IDEA: basta mettere nell'if che attiva il belief di aspettare l'amico un "and if empty(my_communicated_statuses)" in quanto solo all'inizio non avrà mai comunicato niente
-		if flip(1) and !am_scared {
-			do add_belief(going_to_port);
-		} 
-		/* 
-		else if MANCA CRITERIO DECISIONALE {
-			if !(self.has_belief(no_friend_needs_help)){
-				do add_belief(going_rescue_someone);
-			}
-			else {do get_to_port;}
+		else {
+			if agreeableness >= 0.6 {do add_belief(going_rescue_someone);}
+			else {do add_belief(going_to_port);}
 		}
-		else if MANCA CRITERIO DECISIONALE {
-			do add_belief(waiting_for_someone);
-		}	
-		* 
-		*/
-		int decision_lifetime <- int(max([300#s/step,1200#s/step*conscientiousness]));
-		//TODO: se è la prima volta ci devi mettere che il decision_lifetime è anche dato dalla somma con il tempo di preparazione
+		//setting decision lifetime
+		int decision_lifetime;
+		if empty(my_communicated_statuses){
+			if has_belief(waiting_for_someone) {decision_lifetime <- -1;}
+			else{
+				decision_lifetime <- int(max([300#s/step,1200#s/step*conscientiousness]) + total_preparing_time);
+			}
+		}
+		else {			
+			decision_lifetime <- int(max([300#s/step,1200#s/step*conscientiousness]));
+		}
 		do add_belief(took_evac_decision, 1.0, decision_lifetime);
 	}
 	//SOCIAL LINKS
@@ -1540,12 +1534,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 
 	//EMOTIONs
-	//emotion joyPort <- new_emotion("joy", in_target_port);
-	//Ilaria: SE SONO AL PORTO E VOGLIO ESSERE AL PORTO SONO FELICE, E COSA FACCIO SE SONO FELICE?
-		//Enrico: secondo me niente, farei solo che se sei felice contagi gli altri calmando la paura se ti percepiscono
-	//Ilaria: CI SAREBBE DA AGGIUNGERE HAPPY FOR E SORRY FOR 
-		//Enrico: sono d'accordo, ma forse non è immediato, ci penso su
-	
+
 	//EMOTIONAL RESPONSE TO VOLCANIC ACTIVITIES
 	predicate noEruption <- new_predicate("Eruption",false);
 	predicate Eruption <- new_predicate("Eruption");
@@ -1593,8 +1582,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	
 	//TODO: EMOTIONAL CONTAGION (non so se c'è da fare qualcosa qua, forse sì)
+	
+	//TODO: CHECK SE è INUTILE PERCHE FORSE NON AVREMO MAI IL BELIEF ERUPTION
 	float uncertaintyConversion <- 0.25;
-
 	perceive target:People in:view_dist{
 		if(has_belief(Eruption) and not myself.has_belief(Eruption)){
 			focus id:"Eruption" strength: uncertaintyConversion is_uncertain:true;
@@ -1604,43 +1594,20 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		}
 	}		
 
-	float contagionThreshold <- 0.5 parameter: true;
+	float FearContagionThreshold <- 0.5;
+	float JoyContagionThreshold <- 0.5;
 	People perceivedOther <- nil;
 
-	perceive target: People in:view_dist parallel:false{
-		emotional_contagion emotion_detected:fearEruption threshold:contagionThreshold;
-		/*
-		 * POSSIBILE ESPANSIONE DEL MODELLO, se ci chiede in quali direzioni possiamo andare
-		 * socialize trust:gauss(0.0,0.33);
-		myself.perceivedOther<-self;
-		enforcement norm: "followOthers" sanction: "trustSanction" reward: "trustReward";
-		* 
-		*/
+	perceive target: People in:view_dist {
+		emotional_contagion emotion_detected:fearEruption threshold:FearContagionThreshold;
 	}
-	/*
-	 * vedi sopra
-	sanction trustSanction{
-		do change_trust(perceivedOther,-0.1);
-	}
-	sanction trustReward{
-		do change_trust(perceivedOther,0.1);
-	}
-	/* perceive target:LawEnforcement in:view_dist parallel:false{
-		emotional_contagion emotion_detected:joy threshold:contagionThreshold;
-		socialize trust:gauss(0.0,0.33);
-		myself.perceivedOther<-self;
-		enforcement norm: "followOthers" sanction: "trustSanction" reward: "trustReward";
-	}
-
-	sanction trustSanction{
-		do change_trust(perceivedOther,-0.1);
-	}
-	* 
 	
-	sanction trustReward{
-		do change_trust(perceivedOther,0.1);
-	} 
-	VORREI CHE QUESTO FOSSE UN MODO PER CALMARSI QUANDO SI VEDONO LE FORSE DELL'ORDINE */
+	perceive target: People in: view_dist {
+		emotional_contagion emotion_detected: joyPort threshold: JoyContagionThreshold;
+		//così c'è solo il contagio emozionale ma le emozioni sono indipendenti per ora, ho contemporaneamente
+		//paura dell'eruzione e gioia di essere al porto.. per diminuire fearEruption dobbiamo fare come prima?
+	}	
+
 
 	//ASPECT CUSTOMIZATION
 	aspect default {
