@@ -1450,7 +1450,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		else if empty(my_friends) and !self.has_belief(no_friend_needs_help) {do add_belief(no_friend_needs_help);}
 		else if self.has_belief(no_friend_needs_help){do get_to_port;}	
 	}
-	float maximum_waiting_time <- rnd(3600, 18000, 600) #s; //TODO: vogliamo rendere anche questo dipendente dalla personalità?
+	float maximum_waiting_time <- (rnd(int(4800*(0.5 + conscientiousness)), 18000, 600)) #s;
 	float time_spent_waiting_for_someone_to_come <- 0 #s;
 	plan wait_for_someone intention: wait_someone {
 		if !(last(self.my_communicated_statuses) = "waiting") {
