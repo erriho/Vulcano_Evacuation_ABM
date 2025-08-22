@@ -1,0 +1,21 @@
+SERIES_NAME_MAPPING = {
+    "nb_humans_on_island": "Number Of Humans On Island",
+    "nb_people_on_island": "Number Of People On Island",
+    "nb_LEAs_on_island": "Number Of LEAs On Island",
+    "nb_humans_on_board": "Number Of Humans On Board",
+    "nb_people_on_board": "Number Of People On Board",
+    "nb_LEAs_on_board": "Number Of LEAs On Board",
+    "nb_evacuated_humans": "Number Of Evacuated Humans",
+    "nb_evacuated_people": "Number Of Evacuated People",
+    "nb_evacuated_LEAs": "Number Of Evacuated Leas",
+    "nb_people_warned": "Number Of People Warned",
+    "nb_people_prepared": "Number Of People Prepared",
+    "nb_people_going_to_port": "Number Of People Going To Port",
+    "nb_people_rescuing_others": "Number Of People Rescuing Others",
+    "nb_people_waiting": "Number Of People Waiting",
+    "nb_people_at_port": "Number Of People At Port",
+    "nb_people_who_left_the_island": "Number Of People Who Left The Island",
+    "nb_joyous_people": "Number Of Joyous People",
+    "nb_fearful_people": "Number Of Fearful People",
+    "nb_alright_people": "Number Of Alright People"
+}

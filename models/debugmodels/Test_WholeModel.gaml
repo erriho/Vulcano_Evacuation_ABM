@@ -213,7 +213,7 @@ global {
 		 /*
 		  * CREATING PEOPLE
 		  */
-		create People number: 50 {
+		create People number: 10 {
 			walking_speed <- 30 #km/#h;
 			//walking_speed <- rnd(3.0,6.0,0.1) #km/#h;
 			view_dist <- 30 #m;
@@ -622,7 +622,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	}
 	 	//people
  	list<People> alerted_people <- [];
- 	bool ITalert <- false; 
+ 	bool ITalert <- true; 
  	float ITalert_issuance_time <- 0 #s;
  	float time_needed_to_issue_ITalert <- 0 #s;
  	reflex alert_people_with_ITalert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITalert = true {	
@@ -1326,12 +1326,13 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	predicate wait_someone <- new_predicate("wait for someone to come here");
 	predicate waiting_for_someone <- new_predicate("decided to wait for someone");
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision when: !(self.has_belief(took_evac_decision));
+	rule belief: evacuation_order remove_intention: predicate(get_predicate(get_current_intention())) new_desire: need_evac_decision when: !(self.has_belief(took_evac_decision)) and (self.has_belief(prepared_to_evacuate)) and !(self.has_belief(in_target_port));
 	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
 	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: at_target_port when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(at_target_port));	
 	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
-	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: rescue_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(rescue_someone ));
+	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: rescue_someone when: self.has_belief(prepared_to_evacuate) and self.has_belief(took_evac_decision);
 	rule belief: waiting_for_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
-	rule belief: waiting_for_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: wait_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(rescue_someone ));
+	rule belief: waiting_for_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: wait_someone when: self.has_belief(prepared_to_evacuate) and self.has_belief(took_evac_decision);
 	
 	//TODO: finire la fase di preparazione
 		/*
@@ -1351,9 +1352,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			}
 			else if self.has_belief(going_rescue_someone) {
 				do add_desire(rescue_someone);
+				do add_belief(prepared_to_evacuate);
 			}
 			else if self.has_belief(waiting_for_someone) {
 				do add_desire(wait_someone);
+				do add_belief(prepared_to_evacuate);
 			}
 		}
 	}
@@ -1462,6 +1465,8 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	plan choose_whether_to_evacuate intention: need_evac_decision {
 		//decision process
+		//TODO: va rimossa se esistente l'attuale piano
+		
 		bool am_scared <- false;
 		if self.has_emotion(fearEruption) {
 			float fear_intensity <- get_intensity(get_emotion(fearEruption));
@@ -1494,6 +1499,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		* 
 		*/
 		int decision_lifetime <- int(max([300#s/step,1200#s/step*conscientiousness]));
+		//TODO: se è la prima volta ci devi mettere che il decision_lifetime è anche dato dalla somma con il tempo di preparazione
 		do add_belief(took_evac_decision, 1.0, decision_lifetime);
 	}
 	//SOCIAL LINKS
@@ -1539,7 +1545,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	emotion fearEruption <- new_emotion("fear", Eruption);
 	rule emotion:fearEruption new_desire: need_evac_decision remove_intention:enjoying_my_time remove_desire:enjoying_my_time when: (self.is_current_intention(enjoying_my_time) and !(self.has_belief(took_evac_decision)) and get_intensity(self.get_emotion(fearEruption)) > 0.3);
 		//response to boom sounds
-	int max_perceived_boom_intensity <- 18; //TODO: make this value dependent also on personality (we could do so in the reflex so to leave this parameter on its own)
+	int max_perceived_boom_intensity <- int(18*(0.5 + neurotism));
 	float perceived_boom_coefficient <- 0.0;
 	predicate boomHeard <- new_predicate("Boom");
 	//DEPRECATED: rule belief: boomHeard new_uncertainty:Eruption strength: perceived_boom_coefficient when: not has_belief(Eruption);
