@@ -1234,10 +1234,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	bool want_to_board {
 		bool boarding_decision;
+		//TODO: debug it
 		//people	
 		if People contains self {
 			People me <- People(self);
-			list<People> friends_I_worry_about <- list<People>((self.social_link_base where (each.liking > 0.8)) collect each.agent);
+			list<People> friends_I_worry_about <- list<People>((self.social_link_base where (each.liking > 0.5)) collect each.agent);
 			if !empty(friends_I_worry_about) {
 				list<predicate> my_friend_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
 				list<predicate> my_close_friends_statuses <- [];
@@ -1245,29 +1246,24 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 					predicate close_friend_status <- my_friend_statuses first_with ((each).values["name"] = close_friend.name);
 					my_close_friends_statuses <+ close_friend_status; 
 				}			
+				int nb_cf_safe <- 0;
 				loop cf_status over: my_close_friends_statuses {
-					if cf_status.values["status"] = 'unknown' {
-						//TODO: design this part
-						/*
-						 * Dobbiamo decidere tante cose:
-						 * 1) Quali sono i possibili stati in generale
-						 * 2) Cosa fa propendere per un piano o l'altro
-						 * 3) Come si strutturano i vari piani
-						 * 4) Perché ste domande se le fa ora e non quando si è avvicinato al porto?
-						 */
-						write self.name + " is waiting for " + cf_status.values["name"];
-						boarding_decision <- true;
-					}
-					else if cf_status.values["status"] = 'at port'{
-						boarding_decision <- true;
-					}
-					else if cf_status.values["status"] = 'rescuing'{
-						boarding_decision <- true;
-					}
-					else {
-						boarding_decision <- true;
+					if cf_status.values["status"] = 'at port' or 'on board' {
+						nb_cf_safe <- nb_cf_safe + 1;
 					}
 				} 
+				float perc_cf_safe <- nb_cf_safe /length(friends_I_worry_about);
+				float joy_intensity <- 0.0;
+				if has_emotion(joyPort) {joy_intensity <- get_intensity(get_emotion(joyPort));}
+				if joy_intensity >= 0.7 {boarding_decision <- true;}
+				else if joy_intensity >= 0.3 and joy_intensity < 0.7{
+					if perc_cf_safe >= 0.5 {boarding_decision <- true;}
+					else {boarding_decision <- false;}
+				}
+				else {
+					if perc_cf_safe >= 0.7 {boarding_decision <- true;}
+					else {boarding_decision <- false;}
+				}
 			}
 			else {
 				boarding_decision <- true;				
@@ -1285,6 +1281,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		//location <- boarded_vehicle.location; 
 		do goto target: boarded_vehicle.location speed: boarded_vehicle.speed on:ferry_network; //computes much faster
 	}
+	
+	//EMOTIONs
+	emotion joyPort <- new_emotion("joy", in_target_port);
 
  }
 /*
@@ -1541,7 +1540,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 
 	//EMOTIONs
-	emotion joyPort <- new_emotion("joy", in_target_port);
+	//emotion joyPort <- new_emotion("joy", in_target_port);
 	//Ilaria: SE SONO AL PORTO E VOGLIO ESSERE AL PORTO SONO FELICE, E COSA FACCIO SE SONO FELICE?
 		//Enrico: secondo me niente, farei solo che se sei felice contagi gli altri calmando la paura se ti percepiscono
 	//Ilaria: CI SAREBBE DA AGGIUNGERE HAPPY FOR E SORRY FOR 
