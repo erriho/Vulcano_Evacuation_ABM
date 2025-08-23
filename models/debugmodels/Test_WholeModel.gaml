@@ -249,8 +249,7 @@ global {
     		}
     		loop person over: new_friends_circle {
     			loop my_friend over: new_friends_circle_copy {
-    				if my_friend.name != person.name {
-    					//TODO: credete sia meglio fare un'altra inizializzazione?    					
+    				if my_friend.name != person.name { 					
 	    				ask person {
 	    					social_link sl <- new_social_link(my_friend);
 	    					do add_social_link(sl);
@@ -834,6 +833,30 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 		nb_people_at_port <- length(People where (each.has_belief(predicate(each.in_target_port))));
 		nb_people_who_left_the_island <- length(People where (each.has_belief(predicate(each.left_the_island))));
  	} 
+ 	reflex monitor_emotional_status {
+ 		nb_fearful_people <- 0;
+ 		nb_joyous_people <- 0;
+ 		nb_alright_people <- 0;
+ 		float fear_threshold <- 0.6;
+ 		float joy_threshold <- 0.3;
+ 		loop person over: People {
+ 			bool is_fearful <- false;
+ 			bool is_joyous <- false;
+ 			ask person {
+	 			if person.has_emotion(fearEruption) {
+					float fear_intensity <- get_intensity(get_emotion(fearEruption));
+					if fear_intensity >= fear_threshold {is_fearful <- true;}
+				}
+				if person.has_emotion(joyPort) {
+					float joy_intensity <- get_intensity(get_emotion(joyPort));
+					if joy_intensity >= joy_threshold {is_joyous <- true;}
+				}
+ 			}
+ 			if is_fearful {nb_fearful_people <- nb_fearful_people + 1;}
+ 			if is_joyous {nb_joyous_people <- nb_joyous_people + 1;}
+ 			if !is_fearful and !is_joyous {nb_alright_people <- nb_alright_people + 1;}
+ 		}
+ 	}
  	
  	// MANAGING EVACUATION INFRASTRUCTURES 
 	list<Port> ports_to_evacuate;
@@ -1149,7 +1172,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 					if exposition_model = "squared" {
 						if flip(float(intensity^2) / ((length(intensity_distribution))^2)) {
 							ask person {
-								//TODO: insert personality in (belief) lifetime 
+								//can expand to insert personality in (belief) lifetime 
 								int lifetime <- int((600 #s)*(myself.intensity+1)/step);
 								do add_belief(new_predicate("Boom", ["intensity" :: myself.intensity]), 1.0, lifetime);
 							}
@@ -1316,6 +1339,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		do wander on: road_network;
 	}
 	
+	//TODO: sistema questo casino
 	predicate need_evac_decision <- new_predicate("need to take a decision on whether to evacuate");
 	predicate took_evac_decision <- new_predicate("took an evacuation decision");
 	predicate preparing <- new_predicate("preparing to evacuate");
@@ -1336,14 +1360,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	rule belief: waiting_for_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
 	rule belief: waiting_for_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: wait_someone when: self.has_belief(prepared_to_evacuate) and self.has_belief(took_evac_decision);
 	
-	//TODO: finire la fase di preparazione
-		/*
-		 * L'idea è un po' questa, una volta che decido cosa fare dopo aver ricevuto l'ordine di evacuazione:
-		 * - (implementato) spendo del tempo a prepararmi 
-		 * - (implementato) questo tempo è da inizializzare in create come in Bonadonna
-		 * - (manca, ma secondo voi è da fare?) questo tempo sarà aumentato o diminuito di un coefficiente a seconda della cosa scelta (se scelgo di andare a cercare qualcuno ci metto di più)
-		 * - (implementato) trascorso questo tempo farà la cosa che ha deciso di fare 
-		 */
 	plan prepare intention: preparing {
 		time_spent_preparing <- time_spent_preparing + step;
 		if time_spent_preparing >= total_preparing_time {
