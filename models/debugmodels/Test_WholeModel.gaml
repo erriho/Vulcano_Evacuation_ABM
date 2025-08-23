@@ -1513,11 +1513,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		if empty(my_communicated_statuses){
 			if has_belief(waiting_for_someone) {decision_lifetime <- -1;}
 			else{
-				decision_lifetime <- int(max([300#s/step,1200#s/step*conscientiousness]) + total_preparing_time);
+				decision_lifetime <- int(max([300#s/step,1800#s/step*conscientiousness]) + total_preparing_time);
 			}
 		}
 		else {			
-			decision_lifetime <- int(max([300#s/step,1200#s/step*conscientiousness]));
+			decision_lifetime <- int(max([300#s/step,1800#s/step*conscientiousness]));
 		}
 		do add_belief(took_evac_decision, 1.0, decision_lifetime);
 	}
@@ -1681,17 +1681,26 @@ species LawEnforcement parent: Human{
 			predicate current_person_intention <- predicate(get_predicate(get_current_intention()));
 			if has_emotion(fearEruption){
 				emotion fear_to_reduce <- get_emotion(fearEruption);
-				mental_state current_uncertainty <- get_uncertainty_op(self, Eruption);
+				//mental_state current_uncertainty <- get_uncertainty_op(self, Eruption);
 				// write "DEBUG: uncertainty" + string(current_uncertainty) + " - strength: " + current_uncertainty.strength;
-				mental_state eruption_des <- get_desire_op(self, noEruption);
+				//mental_state eruption_des <- get_desire_op(self, noEruption);
 				//write "DEBUG: desire" + string(eruption_des) + " - strength: " + eruption_des.strength;
 				float fear_intensity <- get_intensity(get_emotion(fearEruption));
 				// write "DEBUG: " + myself.name + " - " + self.name + " Fear intensity 1: " + fear_intensity;
-				float fear_reduction_factor <- 0.001 * max(0.1, neurotism);
-				fear_intensity <- fear_intensity * (1 - fear_reduction_factor); 
-				fear_to_reduce <- set_intensity(fear_to_reduce, fear_intensity); 
-				// float fear_intensity_2 <- get_intensity(get_emotion(fearEruption));
-				// write "DEBUG: " + myself.name + " - " + self.name + "Fear intensity 2: " + fear_intensity_2;
+				if fear_intensity > 0.4 {
+					float fear_reduction_factor <- 0.001 * max(0.1, neurotism);
+					fear_intensity <- fear_intensity * (1 - fear_reduction_factor); 
+					fear_to_reduce <- set_intensity(fear_to_reduce, fear_intensity); 
+					// float fear_intensity_2 <- get_intensity(get_emotion(fearEruption));
+					// write "DEBUG: " + myself.name + " - " + self.name + "Fear intensity 2: " + fear_intensity_2;
+				}
+				else{
+					if current_person_intention  != at_target_port and current_person_intention != in_target_port{
+						//write "DEBUG:" + myself.name + " - " + person_seen;
+						do remove_intention(current_person_intention , true);
+						do add_belief(going_to_port);
+					}
+				}
 			}
 			else{
 				if current_person_intention  != at_target_port and current_person_intention != in_target_port{
