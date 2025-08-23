@@ -72,7 +72,7 @@ global {
 	];
 	
 		//civil defense
-	bool ITalert_glob <- false;
+	bool ITalert_glob <- true;
 	map glob_manage_LEAs_map <- [
 		"give evacuation order" :: 20,
 		"backup" :: manage_LEAs_backups_map 
@@ -624,7 +624,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	}
 	 	//people
  	list<People> alerted_people <- [];
- 	bool ITalert <- true; 
+ 	bool ITalert <- false; 
  	float ITalert_issuance_time <- 0 #s;
  	float time_needed_to_issue_ITalert <- 0 #s;
  	reflex alert_people_with_ITalert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITalert = true {	
@@ -1350,28 +1350,43 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	float total_preparing_time <- 600 #s;
 		//evacuation
 	predicate going_to_port <- new_predicate("decided to go to port"); 
-	predicate rescue_someone <- new_predicate("rescue someone");
 	predicate going_rescue_someone <- new_predicate("decided to go rescue someone");
-	predicate wait_someone <- new_predicate("wait for someone to come here");
+	predicate rescue_someone <- new_predicate("rescue someone");
 	predicate waiting_for_someone <- new_predicate("decided to wait for someone");
-	predicate at_safe_area <- new_predicate("going to evacuation infrastructure");
-	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision when: !(self.has_belief(took_evac_decision));
-	rule belief: evacuation_order remove_intention: predicate(get_predicate(get_current_intention())) new_desire: need_evac_decision when: !(self.has_belief(took_evac_decision)) and (self.has_belief(prepared_to_evacuate)) and !(self.has_belief(in_target_port));
-	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
-	rule belief: going_to_port remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: at_target_port when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(at_target_port));	
-	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
-	rule belief: going_rescue_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: rescue_someone when: self.has_belief(prepared_to_evacuate) and self.has_belief(took_evac_decision);
-	rule belief: waiting_for_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
-	rule belief: waiting_for_someone remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: wait_someone when: self.has_belief(prepared_to_evacuate) and self.has_belief(took_evac_decision);
+	predicate wait_someone <- new_predicate("wait for someone to come here");
+	predicate going_to_safe_area <- new_predicate("decided to go to nearest evacuation infrastructure");
+	predicate at_safe_area <- new_predicate("going to nearest evacuation infrastructure");
+		//RULES and ACTIONS
+		// 1) prende una prima decisione 
+	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision when: self.has_desire(enjoying_my_time) and !(self.has_belief(took_evac_decision));
+	rule emotion: fearEruption remove_desire: enjoying_my_time new_desire: need_evac_decision when: self.has_desire(enjoying_my_time) and !(self.has_belief(took_evac_decision)) and (get_intensity(get_emotion(fearEruption)) >= 0.6);
+		// 2) si deve preparare
+	rule belief: one_of([going_to_port, going_rescue_someone, waiting_for_someone, going_to_safe_area]) remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
+		// 3) deve fare ciò che ha scelto
+	rule belief: prepared_to_evacuate remove_intention: preparing remove_desire: preparing;
+	rule belief: going_to_port new_desire: at_target_port when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(at_target_port));
+	rule belief: going_rescue_someone new_desire: rescue_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(rescue_someone));
+	rule belief: waiting_for_someone new_desire: wait_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(wait_someone));
+	rule belief: going_to_safe_area new_desire: at_safe_area when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(wait_someone));
+		// 4) deve poter decidere di nuovo se la decisione è scaduta se è al porto deve aspettare e basta
+	//rule new_desire: need_evac_decision remove_intention: predicate(get_predicate(get_current_intention())) remove_desire: predicate(get_predicate(get_current_intention())) remove_beliefs: [going_to_port, going_rescue_someone, waiting_for_someone] when: !(self.has_desire(enjoying_my_time)) and !(self.has_belief(took_evac_decision)) and !(self.has_desire(in_target_port));
+	rule new_desire: need_evac_decision remove_intention: predicate(get_predicate(get_current_intention())) remove_desire: predicate(get_predicate(get_current_intention())) remove_beliefs: [going_to_port, going_rescue_someone, waiting_for_someone] when: !(self.has_desire(enjoying_my_time)) and !(self.has_belief(took_evac_decision)) and !(self.has_desire(in_target_port));	
 	action get_to_port{
 		predicate my_current_intention <- predicate(get_predicate(get_current_intention()));
+		write self.name + my_current_intention;
+		write self.name + desire_base;
 		do remove_intention(my_current_intention, true);
+		write self.name + desire_base;
 		do add_belief(going_to_port);		
 	}
 		//PLANS
 		//decision process
 	plan choose_whether_to_evacuate intention: need_evac_decision {
 		//TODO: va rimosso se esistente l'attuale piano? oppure ci pensa la rule (meglio)
+		if contains(belief_base, going_to_port){do remove_belief(going_to_port);}
+		if contains(belief_base, going_rescue_someone){do remove_belief(going_rescue_someone);}
+		if contains(belief_base, waiting_for_someone){do remove_belief(waiting_for_someone);}
+		if contains(belief_base, going_to_safe_area){do remove_belief(going_to_safe_area);}
 		//TODO: MANCA DA FARE IL DEBUG IF THE PLAN IS CORRECTLY EXECUTED
 		if flip(0.95){
 			//rational
@@ -1381,7 +1396,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			else if self.has_emotion(fearEruption) {
 				float fear_intensity <- get_intensity(get_emotion(fearEruption));
 				if fear_intensity >= 0.6 {
-					do add_desire(new_predicate("going to evacuation infrastructure", ["target" :: closest_to(EvacuationInfrastructure,self)]));
+					do add_belief(new_predicate("decided to go to nearest evacuation infrastructure", ["target" :: closest_to(Waiting_Areas+Port+Heliport,self)]));
 				}
 				else{
 					if agreeableness >= 0.6 {do add_belief(going_rescue_someone);}
@@ -1402,10 +1417,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			else {
 				chosen_plan <- rnd_choice(["port"::0.34, "rescue"::0.33, "waiting area"::0.33]);
 			}
+			// write "DEBUG: " + self.name + " acted irrationally by chosing " + chosen_plan;
 			if chosen_plan = "port" {do add_belief(going_to_port);}
 			else if chosen_plan = "rescue" {do add_belief(going_rescue_someone);}
-			else if chosen_plan = "waiting_area" {do add_desire(new_predicate("going to evacuation infrastructure", ["target" :: closest_to(EvacuationInfrastructure,self)]));}
-			else if chosen_plan = "wait" {do add_belief(waiting_for_someone);}
+			else if chosen_plan = "waiting area" {do add_belief(new_predicate("decided to go to nearest evacuation infrastructure", ["target" :: closest_to(Waiting_Areas+Port+Heliport,self)]));}
+			else if chosen_plan = "wait someone" {do add_belief(waiting_for_someone);}
 			else {write "ERROR: Error in decision process of " + self.name;}
 		}
 		//setting decision lifetime
@@ -1539,10 +1555,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			do get_to_port;
 		}
 	}
-		//waiting 
+		//go to waiting areas
 	plan go_to_safe_area intention: at_safe_area {
-		point target_destination <- predicate(get_desire_op(self, at_safe_area)).values["target"];
-		do goto target: target_destination on: road_network speed: walking_speed;
+		do goto target: predicate(get_predicate(get_belief(going_to_safe_area))).values["target"] on: road_network speed: walking_speed;
 	}
 	
 	//SOCIAL LINKS
