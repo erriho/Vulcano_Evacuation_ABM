@@ -10,3 +10,6 @@ models/debugmodels/exports
 #ignore iCloud files
 *.DS_Store
 *.icloud
+
+#ignore Python cache files
+*.pyc 
