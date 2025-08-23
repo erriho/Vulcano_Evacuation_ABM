@@ -1473,22 +1473,40 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		//decision process
 		//TODO: va rimosso se esistente l'attuale piano? oppure ci pensa la rule (meglio)
 		//TODO: MANCA DA FARE IL DEBUG IF THE PLAN IS CORRECTLY EXECUTED
-		if extroversion >= 0.8 and empty(my_communicated_statuses) {
-			do add_belief(waiting_for_someone);
-		}
-		else if self.has_emotion(fearEruption) {
-			float fear_intensity <- get_intensity(get_emotion(fearEruption));
-			if fear_intensity >= 0.6 {
-				do add_desire(new_predicate("going to evacuation infrastructure", ["target" :: closest_to(EvacuationInfrastructure,self)]));
+		if flip(0.95){
+			//rational
+			if extroversion >= 0.8 and empty(my_communicated_statuses) {
+				do add_belief(waiting_for_someone);
 			}
-			else{
+			else if self.has_emotion(fearEruption) {
+				float fear_intensity <- get_intensity(get_emotion(fearEruption));
+				if fear_intensity >= 0.6 {
+					do add_desire(new_predicate("going to evacuation infrastructure", ["target" :: closest_to(EvacuationInfrastructure,self)]));
+				}
+				else{
+					if agreeableness >= 0.6 {do add_belief(going_rescue_someone);}
+					else {do add_belief(going_to_port);}
+				}
+			}
+			else {
 				if agreeableness >= 0.6 {do add_belief(going_rescue_someone);}
 				else {do add_belief(going_to_port);}
 			}
 		}
-		else {
-			if agreeableness >= 0.6 {do add_belief(going_rescue_someone);}
-			else {do add_belief(going_to_port);}
+		else{
+			//irrational
+			string chosen_plan;
+			if empty(my_communicated_statuses){
+				chosen_plan <- rnd_choice(["port"::0.25, "rescue"::0.25, "waiting area"::0.25, "wait someone"::0.25]);
+			}
+			else {
+				chosen_plan <- rnd_choice(["port"::0.34, "rescue"::0.33, "waiting area"::0.33]);
+			}
+			if chosen_plan = "port" {do add_belief(going_to_port);}
+			else if chosen_plan = "rescue" {do add_belief(going_rescue_someone);}
+			else if chosen_plan = "waiting_area" {do add_desire(new_predicate("going to evacuation infrastructure", ["target" :: closest_to(EvacuationInfrastructure,self)]));}
+			else if chosen_plan = "wait" {do add_belief(waiting_for_someone);}
+			else {write "ERROR: Error in decision process of " + self.name;}
 		}
 		//setting decision lifetime
 		int decision_lifetime;
