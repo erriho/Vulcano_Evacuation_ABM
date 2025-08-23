@@ -1,15 +1,17 @@
 model TestModel
 
 global {
-	//gloal variables for results
+		//gloal variables for results
 	bool save_data <- false;
 	int save_series_every <- 15 #cycles;
 	bool should_kill_simulation <- false;
-	string saving_folder <- "../../results/";
-	string temporal_series_recorder_filename <- "prova.csv";
-	string volcanic_recorder_filename <- "prova2.csv";
-	string simulation_recorder_filename <- "prova3.csv";
+	bool simulation_ended <- false;
+	string saving_folder <- "../../results/" + seed + "/";
+	string temporal_series_recorder_filename <- "temporal_series_recorder.csv";
+	string volcanic_recorder_filename <- "volcanic_recorder.csv";
+	string simulation_recorder_filename <- "simulation_recorder.csv";
 		//evacuation variables
+		//TODO: remove done when you're done
 	int nb_humans_on_island; //done
 	int nb_people_on_island; //done
 	int nb_LEAs_on_island; //done
@@ -146,6 +148,7 @@ global {
 			save [event_time, event_name, notes] to: save_path format: "csv" header: true rewrite: false;	
 		}
 		do pause;
+		simulation_ended <- true;
 		if should_kill_simulation {ask host {do die;}}
 	}
 	
@@ -2210,4 +2213,9 @@ experiment "show simulation_with_charts" type: gui {
 	}
 }
 
+
+experiment multiple_runs type:batch until:simulation_ended repeat:1 parallel:true{
+	parameter "nb groups" var:seed min:1.0 max:42.0;
+	method exploration;
+}
 
