@@ -73,7 +73,11 @@ global {
 	];
 	
 		//civil defense
+	float time_needed_to_issue_LEA_order_glob <- 0 #s; //time required by CD for LEAs to initiate civil evacuation process
+	float time_needed_to_issue_evac_order_glob <- 1200 #s; //time required by CD for issuing the evacuation alert
 	bool ITalert_glob <- true;
+	float time_needed_to_issue_ITalert_glob <- 600 #s;
+	
 	map glob_manage_LEAs_map <- [
 		"give evacuation order" :: 20,
 		"backup" :: manage_LEAs_backups_map 
@@ -82,7 +86,7 @@ global {
 		"should create backups" :: true,
 		"location":: "any_port",
 		"number":: 20,
-		"arrival time":: 60 #s
+		"arrival time":: 1800 #s + time_needed_to_issue_LEA_order_glob
 	];
 	
 		//people
@@ -217,14 +221,14 @@ global {
 		 /*
 		  * CREATING PEOPLE
 		  */
-		create People number: 1 {
-			walking_speed <- 30 #km/#h;
-			//walking_speed <- rnd(3.0,6.0,0.1) #km/#h;
+		create People number: 30 {
+			//walking_speed <- 30 #km/#h;
+			walking_speed <- rnd(3.0,6.0,0.1) #km/#h;
 			view_dist <- 30 #m;
 			if flip(1/2) {location <- any_location_in(one_of(Buildings));}
 			else {location <- any_location_in(one_of(Roads));}
 			total_preparing_time <- 0 #s;
-			//total_preparing_time <- truncated_gauss({preparing_time_avg, preparing_time_std})#s;
+			total_preparing_time <- truncated_gauss({preparing_time_avg, preparing_time_std})#s;
     	}
     	//create social links
     	bool there_are_people_left <- true;
@@ -599,11 +603,10 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  		}
  	}
  	reflex monitor_volcano when: monitor_la_fossa {
- 		float evac_order_issuance_time;
  		LaFossa_activity_level <- LaFossa.activity_level;	
  		if LaFossa_activity_level = 2 and issue_evacuation_order = false{
  			evac_order_issuance_time <- evac_order_issuance_time + step; 
- 			if evac_order_issuance_time > time_needed_to_issue_LEA_order {
+ 			if evac_order_issuance_time > time_needed_to_issue_LEA_order and !issue_LEAs_order{
  				write self.name + ": evacuation order issued to LEAs.";
  				issue_LEAs_order <- true;
  			} 
@@ -615,7 +618,8 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	}
  	// EVACUATION ORDER 
  	bool issue_evacuation_order <- false;
- 	float time_needed_to_issue_evac_order <- 0 #s;
+	float evac_order_issuance_time;
+ 	float time_needed_to_issue_evac_order <- time_needed_to_issue_evac_order_glob;
  		//ferries and helicopers
  	list<Ferry> alerted_ferries;
  	reflex alert_ferries when: !empty(Ferry - alerted_ferries) and issue_evacuation_order = true{
@@ -631,7 +635,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	list<People> alerted_people <- [];
  	bool ITalert <- false; 
  	float ITalert_issuance_time <- 0 #s;
- 	float time_needed_to_issue_ITalert <- 0 #s;
+ 	float time_needed_to_issue_ITalert <- time_needed_to_issue_ITalert_glob;
  	reflex alert_people_with_ITalert when: !empty(People - alerted_people) and issue_evacuation_order = true and ITalert = true {	
  		ITalert_issuance_time <- ITalert_issuance_time + step; 
  		if ITalert_issuance_time >= time_needed_to_issue_ITalert {
@@ -642,14 +646,14 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  				}
 	 		} 			
 	 		alerted_people <- list(People);
- 		}
- 		if save_data {
- 			map event_map <- [
-				"time" :: time,
-				"name" :: "Population Evacuation Order - IT Alert issued",
-				"notes" :: "Civil defense ordered evacuation of civil population using IT Alert."
-			];
-			simulation_events_recorder <+ event_map;
+	 		if save_data {
+	 			map event_map <- [
+					"time" :: time,
+					"name" :: "Population Evacuation Order - IT Alert issued",
+					"notes" :: "Civil defense ordered evacuation of civil population using IT Alert."
+				];
+				simulation_events_recorder <+ event_map;
+	 		}
  		}
  	}
  		//law enforcement 	
@@ -678,7 +682,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	}
 	//LAW ENFORCEMENT AGENTS MANAGEMENT
 	bool issue_LEAs_order <- false;
- 	float time_needed_to_issue_LEA_order <- 0 #s;
+ 	float time_needed_to_issue_LEA_order <- time_needed_to_issue_LEA_order_glob;
  	map<string,unknown> manage_LEAs_map <- glob_manage_LEAs_map;
  	int ordering_evac_LEAs_nb;
  	bool should_create_backups;
@@ -1283,7 +1287,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				float perc_cf_safe <- nb_cf_safe /length(friends_I_worry_about);
 				float joy_intensity <- 0.0;
 				if has_emotion(joyPort) {joy_intensity <- get_intensity(get_emotion(joyPort));}
-				write self.name + "has: " + perc_cf_safe + "% close friends safe and has joy equal to " + joy_intensity;
+				//write "DEBUG: " + self.name + "has: " + perc_cf_safe + "% close friends safe and has joy equal to " + joy_intensity;
 				if joy_intensity >= 0.7 {boarding_decision <- true;}
 				else if joy_intensity >= 0.3 and joy_intensity < 0.7{
 					if perc_cf_safe >= 0.5 {boarding_decision <- true;}
@@ -1376,9 +1380,10 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	rule belief: going_to_safe_area new_desire: at_safe_area when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(wait_someone));
 	rule belief: one_of([going_to_port, going_rescue_someone, waiting_for_someone, going_to_safe_area]) remove_intention: need_evac_decision remove_desire: need_evac_decision when: self.has_belief(prepared_to_evacuate);
 		// 4) deve poter decidere di nuovo se la decisione è scaduta se è al porto deve aspettare e basta
-	rule new_desire: need_evac_decision remove_intention: predicate(get_predicate(get_current_intention())) remove_desire: predicate(get_predicate(get_current_intention())) remove_beliefs: [going_to_port, going_rescue_someone, waiting_for_someone] when: !(self.has_desire(enjoying_my_time)) and !(self.has_belief(took_evac_decision)) and !(self.has_desire(in_target_port));
+	rule new_desire: need_evac_decision remove_intention: predicate(get_predicate(get_current_intention())) remove_desire: predicate(get_predicate(get_current_intention())) remove_beliefs: [going_to_port, going_rescue_someone, waiting_for_someone, going_to_safe_area] when: !(self.has_desire(enjoying_my_time)) and !(self.has_belief(took_evac_decision)) and !(self.has_desire(in_target_port));
 	rule remove_beliefs: [going_to_port, going_to_safe_area, waiting_for_someone, going_rescue_someone] when: self.has_belief(in_target_port);
-	rule remove_beliefs: [going_to_safe_area, waiting_for_someone, going_rescue_someone] when: self.has_belief(going_to_port); 
+	rule remove_beliefs: [going_to_safe_area, waiting_for_someone, going_rescue_someone] when: self.has_belief(going_to_port);
+	rule remove_desires: [at_safe_area, wait_someone, rescue_someone] when: self.has_belief(going_to_port); 
 	action get_to_port{
 		predicate my_current_intention <- predicate(get_predicate(get_current_intention()));
 		do remove_intention(my_current_intention, true);
@@ -1387,7 +1392,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		//PLANS
 		//decision process
 	plan choose_whether_to_evacuate intention: need_evac_decision when: !(self.has_belief(took_evac_decision)){
-		//TODO: MANCA DA FARE IL DEBUG IF THE PLAN IS CORRECTLY EXECUTED
 		//setting decision lifetime
 		int decision_lifetime;
 		if empty(my_communicated_statuses){
@@ -1397,7 +1401,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			decision_lifetime <- int(max([300#s/step,1800#s/step*conscientiousness]));
 		}
 		//choosing next plan
-		if flip(0){
+		if flip(0.95){
 			//rational
 			if extroversion >= 0.8 and empty(my_communicated_statuses) {
 				do add_belief(waiting_for_someone, 1.0, -1);
@@ -1421,38 +1425,21 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			//irrational
 			string chosen_plan;
 			if empty(my_communicated_statuses){
-				chosen_plan <- rnd_choice(["port"::0.0, "rescue"::0.0, "waiting area"::1.0, "wait someone"::0.0]);
-				//chosen_plan <- rnd_choice(["port"::0.25, "rescue"::0.25, "waiting area"::0.25, "wait someone"::0.25]);
+				chosen_plan <- rnd_choice(["port"::0.25, "rescue"::0.25, "waiting area"::0.25, "wait someone"::0.25]);
 			}
 			else {
-				chosen_plan <- rnd_choice(["port"::0.0, "rescue"::0.0, "waiting area"::1.0]);
-				//chosen_plan <- rnd_choice(["port"::0.34, "rescue"::0.33, "waiting area"::0.33]);
+				chosen_plan <- rnd_choice(["port"::0.34, "rescue"::0.33, "waiting area"::0.33]);
 			}
 			// write "DEBUG: " + self.name + " acted irrationally by chosing " + chosen_plan;
-			if chosen_plan = "port" {do add_belief(going_to_port, 1.0, decision_lifetime);
-				write "DEBUG: " + self.name + " chose " + chosen_plan;
-			}
-			else if chosen_plan = "rescue" {do add_belief(going_rescue_someone, 1.0, decision_lifetime);
-				write "DEBUG: " + self.name + " chose " + chosen_plan;
-			}
-			else if chosen_plan = "waiting area" {do add_belief(going_to_safe_area, 1.0, decision_lifetime);
-				write "DEBUG: " + self.name + " chose " + chosen_plan;
-			}
-			else if chosen_plan = "wait someone" {do add_belief(waiting_for_someone, 1.0, -1);
-				write "DEBUG: " + self.name + " chose " + chosen_plan;
-			}
+			if chosen_plan = "port" {do add_belief(going_to_port, 1.0, decision_lifetime);}
+			else if chosen_plan = "rescue" {do add_belief(going_rescue_someone, 1.0, decision_lifetime);}
+			else if chosen_plan = "waiting area" {do add_belief(going_to_safe_area, 1.0, decision_lifetime);}
+			else if chosen_plan = "wait someone" {do add_belief(waiting_for_someone, 1.0, -1);}
 			else {write "ERROR: Error in decision process of " + self.name;}
 		}
 		do add_belief(took_evac_decision, 1.0, decision_lifetime);
-		if has_belief(took_evac_decision){
-			write self.name + " - " + belief_base;
-		}
 	}
-	
-	reflex ciaone {
-		//write name + " check - " + belief_base;
-	}
-		
+			
 		//preparing 
 	plan prepare intention: preparing {
 		time_spent_preparing <- time_spent_preparing + step;
@@ -1508,14 +1495,16 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			do add_subintention(get_current_intention(), communicate_status, true);	
 			do current_intention_on_hold();				
 		}
-		if !empty(my_friends) and friend_to_rescue = nil {
+		if !empty(my_friends) and friend_to_rescue = nil and !self.has_belief(no_friend_needs_help){
 			do select_friend_to_help;
+			//write "DEBUG: " + self.name + " selected a friend.";
 		}
 		else if friend_to_rescue != nil and !(dead(friend_to_rescue)) {
 			list<predicate> my_friends_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
 			point friend_location <- (my_friends_statuses first_with ((each).values["name"] = friend_to_rescue.name)).values["location"];
 			if self.location != friend_location {
 				do goto target: friend_location on: road_network speed: walking_speed*1.5;
+				//write "DEBUG: " + self.name + " reaching friend.";
 			}
 			else{
 				if self distance_to(friend_to_rescue) < 10 #m {
@@ -1531,6 +1520,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 					if !friend_is_scared {
 						ask friend_to_rescue {do get_to_port;}	
 						do get_to_port;
+						//write "DEBUG: " + self.name + " leaving with my friend.";
 						//it would be cool to change speed so that they follow each other (e.g set speed to the minumum of their walking speed)
 					}
 					else{
@@ -1538,7 +1528,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 							social_link sl_with_rescuer <- first(self.social_link_base where (each.agent = myself));
 							float dominance <- get_dominance(sl_with_rescuer);
 							float fear_reduction_factor <- 0.001 * max(0.1, dominance);
-							//TODO: debug this
 							emotion fear_to_reduce <- get_emotion(fearEruption);
 							fear_intensity <- fear_intensity * (1-fear_reduction_factor); 
 							fear_to_reduce <- set_intensity(fear_to_reduce, fear_intensity); 
@@ -1547,6 +1536,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				}		
 				else{
 					attempted_rescue_friends <+ friend_to_rescue;
+					//write "DEBUG: " + self.name + " friend was not there.";
 					do get_to_port;
 					//can be expanded to emotions (e.g. fear of my friend not being safe)
 				}
