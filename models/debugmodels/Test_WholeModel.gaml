@@ -11,26 +11,27 @@ global {
 	string volcanic_recorder_filename <- "volcanic_recorder.csv";
 	string simulation_recorder_filename <- "simulation_recorder.csv";
 		//evacuation variables
-		//TODO: remove done when you're done
-	int nb_humans_on_island; //done
-	int nb_people_on_island; //done
-	int nb_LEAs_on_island; //done
-	int nb_humans_on_board;  //done
-	int nb_people_on_board;  //done
-	int nb_LEAs_on_board;  //done
-	int nb_evacuated_humans; //done
-	int nb_evacuated_people; //done
-	int nb_evacuated_LEAs; //done
+	int nb_humans_on_island;
+	int nb_people_on_island;
+	int nb_LEAs_on_island;
+	int nb_humans_on_board; 
+	int nb_people_on_board; 
+	int nb_LEAs_on_board; 
+	int nb_evacuated_humans;
+	int nb_evacuated_people;
+	int nb_evacuated_LEAs;
 		//people status variables
-	int nb_people_warned; //done 
-	int nb_people_prepared; //done
-	int nb_people_going_to_port; //done (missing belief removal, for this and all the following, at least the temporary ones)
-	int nb_people_rescuing_others; //done
-	int nb_people_waiting; //done
-	int nb_people_at_port; //done
-	int nb_people_who_left_the_island; //done
+	int nb_people_warned; 
+	int nb_people_prepared;
+	int nb_people_enjoying_their_time;
+	int nb_people_making_a_decision;
+	int nb_people_going_to_port;
+	int nb_people_rescuing_others;
+	int nb_people_waiting;
+	int nb_people_going_to_safe_area;
+	int nb_people_at_port;
+	int nb_people_who_left_the_island;
 		//people emotional status variable
-	//TODO: dobbiamo scegliere sopra che intensità uno ha paura o è gioioso (poi a metterlo nel codice dove serve ci pensa Enrico)
 	int nb_joyous_people;
 	int nb_fearful_people;
 	int nb_alright_people;
@@ -106,7 +107,7 @@ global {
 			nb_humans_on_island, nb_people_on_island, nb_LEAs_on_island,
 			nb_humans_on_board, nb_people_on_board, nb_LEAs_on_board,
 			nb_evacuated_humans, nb_evacuated_people, nb_evacuated_LEAs,
-			nb_people_warned, nb_people_prepared, nb_people_going_to_port, nb_people_rescuing_others, nb_people_waiting, nb_people_at_port, nb_people_who_left_the_island,
+			nb_people_warned, nb_people_prepared, nb_people_enjoying_their_time, nb_people_making_a_decision, nb_people_going_to_port, nb_people_rescuing_others, nb_people_waiting, nb_people_going_to_safe_area, nb_people_at_port, nb_people_who_left_the_island,
 			nb_joyous_people, nb_fearful_people, nb_alright_people
 		] to: save_path format: "csv" header: true rewrite: false;
 	}
@@ -315,6 +316,9 @@ global {
 			unboarding_speed <- 1/(15#s);
 			max_waiting_time <- 3000 #s;
 			location <- any_location_in(one_of(ferry_network.vertices));
+			if location = {26638.627501384763,23758.905291362666,0.0} {
+				location <- {26638.627501384763,23758.905291362666,0.0};
+			}
 			loop port over: Port {
 				//DEBUG: write port.name;
 				if port.name = "Porto di Milazzo" {
@@ -827,9 +831,12 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  	reflex monitor_evacuation_status when: issue_evacuation_order {
  		nb_people_warned <- length(People where (each.has_belief(predicate(each.evacuation_order))));
 		nb_people_prepared <- length(People where (each.has_belief(predicate(each.prepared_to_evacuate))));
+		nb_people_enjoying_their_time <- length(People where (each.has_desire(predicate(each.enjoying_my_time))));
+		nb_people_making_a_decision <- length(People where (each.has_desire(predicate(each.need_evac_decision))));
 		nb_people_going_to_port <- length(People where (each.has_belief(predicate(each.going_to_port))));
 		nb_people_rescuing_others <- length(People where (each.has_belief(predicate(each.going_rescue_someone))));
 		nb_people_waiting <- length(People where (each.has_belief(predicate(each.waiting_for_someone))));
+		nb_people_going_to_safe_area <- length(People where (each.has_belief(predicate(each.going_to_safe_area))));
 		nb_people_at_port <- length(People where (each.has_belief(predicate(each.in_target_port))));
 		nb_people_who_left_the_island <- length(People where (each.has_belief(predicate(each.left_the_island))));
  	} 
@@ -1272,12 +1279,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 					predicate close_friend_status <- my_friend_statuses first_with ((each).values["name"] = close_friend.name);
 					my_close_friends_statuses <+ close_friend_status; 
 				}			
-				int nb_cf_safe <- 0;
-				loop cf_status over: my_close_friends_statuses {
-					if cf_status.values["status"] = 'at port' or cf_status.values["status"] = 'on board' {
-						nb_cf_safe <- nb_cf_safe + 1;
-					}
-				} 
+				int nb_cf_safe <- my_close_friends_statuses count (each.values["status"] = 'at port' or each.values["status"] = 'on board');
 				float perc_cf_safe <- nb_cf_safe /length(friends_I_worry_about);
 				float joy_intensity <- 0.0;
 				if has_emotion(joyPort) {joy_intensity <- get_intensity(get_emotion(joyPort));}
@@ -1575,7 +1577,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		else if self.has_belief(left_the_island) {do update_status_to_my_friends("on board");}
 		else if self.has_desire(at_target_port) {do update_status_to_my_friends("going to port");}
 		else if self.has_desire(rescue_someone) {do update_status_to_my_friends("rescuing");}
-		else if self.has_desire(waiting_for_someone) {do update_status_to_my_friends("waiting");}
+		else if self.has_desire(wait_someone) {do update_status_to_my_friends("waiting");}
 		do remove_intention(communicate_status, true);
 	}
 	
@@ -1595,7 +1597,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			self.my_communicated_statuses <+ status;			
 			//write "DEBUG: " + self.name + " has updated belief base of " + my_friends;
 		}
-		else{//No need to update status}
+		else{}//No need to update status
 	}
 
 	//EMOTIONs
@@ -2233,9 +2235,11 @@ experiment "show simulation_with_charts" type: gui {
 	       chart "People behaviour - Timeseries" type: series size: {0.5, 0.5} position: {0,0} {
 	       		data "warned" value: nb_people_warned color: #yellow;
 	       		data "prepared" value: nb_people_prepared color: #orange;
+	       		data "enjoying their time" value: nb_people_enjoying_their_time color: #darkred;
 	       		data "going to port" value: nb_people_going_to_port color: #blue;
 	       		data "rescuing" value: nb_people_rescuing_others color: #red;
 	       		data "waiting help" value: nb_people_waiting color: #black;
+	       		data "going to safe area" value: nb_people_going_to_safe_area color: #darkblue;
 	       		data "at port" value: nb_people_at_port color: #grey;
 	       		data "left island" value: nb_people_who_left_the_island color: #green;
 	       }
@@ -2247,9 +2251,11 @@ experiment "show simulation_with_charts" type: gui {
 	       chart "People behaviour - Histogram" type: histogram size: {1, 0.5} position: {0,0.5} {
 	       		data "warned" value: nb_people_warned color: #yellow;
 	       		data "prepared" value: nb_people_prepared color: #orange;
+	       		data "enjoying their time" value: nb_people_enjoying_their_time color: #darkred;
 	       		data "going to port" value: nb_people_going_to_port color: #blue;
 	       		data "rescuing" value: nb_people_rescuing_others color: #red;
 	       		data "waiting help" value: nb_people_waiting color: #black;
+	       		data "going to safe area" value: nb_people_going_to_safe_area color: #darkblue;
 	       		data "at port" value: nb_people_at_port color: #grey;
 	       		data "left island" value: nb_people_who_left_the_island color: #green;
 	       }			  
