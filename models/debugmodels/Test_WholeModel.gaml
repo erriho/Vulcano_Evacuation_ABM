@@ -288,6 +288,7 @@ global {
 		  * CREATING LAW ENFORCEMENT AGENTS
 		  */
 		create LawEnforcement number: 20 {
+			view_dist <- 30 #m;
 			float location_extraction <- rnd(1.0);
 			if location_extraction <= 0.80 {
 				float port_location_extraction <- rnd(1.0);
@@ -1211,7 +1212,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		use_personality <- true;	
 	}
 	//enviornment-related variables
-	float view_dist;
+	float view_dist <- 30 #m;
 	float walking_speed <- 5 #km/#h;
 	float vehicle_speed <- 25 #km/#h;
 	//boarding-related variables
@@ -1420,11 +1421,12 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			//irrational
 			string chosen_plan;
 			if empty(my_communicated_statuses){
-				chosen_plan <- rnd_choice(["port"::0.0, "rescue"::0.0, "waiting area"::0.0, "wait someone"::1.0]);
+				chosen_plan <- rnd_choice(["port"::0.0, "rescue"::0.0, "waiting area"::1.0, "wait someone"::0.0]);
 				//chosen_plan <- rnd_choice(["port"::0.25, "rescue"::0.25, "waiting area"::0.25, "wait someone"::0.25]);
 			}
 			else {
-				chosen_plan <- rnd_choice(["port"::0.34, "rescue"::0.33, "waiting area"::0.33]);
+				chosen_plan <- rnd_choice(["port"::0.0, "rescue"::0.0, "waiting area"::1.0]);
+				//chosen_plan <- rnd_choice(["port"::0.34, "rescue"::0.33, "waiting area"::0.33]);
 			}
 			// write "DEBUG: " + self.name + " acted irrationally by chosing " + chosen_plan;
 			if chosen_plan = "port" {do add_belief(going_to_port, 1.0, decision_lifetime);
@@ -1448,7 +1450,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	
 	reflex ciaone {
-		write name + " check - " + belief_base;
+		//write name + " check - " + belief_base;
 	}
 		
 		//preparing 
@@ -1466,6 +1468,10 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			}
 			else if self.has_belief(waiting_for_someone) {
 				do add_desire(wait_someone);
+				do add_belief(prepared_to_evacuate);
+			}
+			else if self.has_belief(going_to_safe_area) {
+				do add_desire(at_safe_area);
 				do add_belief(prepared_to_evacuate);
 			}
 		}
@@ -1750,22 +1756,19 @@ species LawEnforcement parent: Human{
 					// write "DEBUG: " + myself.name + " - " + self.name + "Fear intensity 2: " + fear_intensity_2;
 				}
 				else{
-					if current_person_intention  != at_target_port and current_person_intention != in_target_port{
+					if current_person_intention != at_target_port and current_person_intention != in_target_port{
 						//write "DEBUG:" + myself.name + " - " + person_seen;
-						do remove_intention(current_person_intention , true);
-						do add_belief(going_to_port);
+						do get_to_port;
 					}
 				}
 			}
 			else{
-				if current_person_intention  != at_target_port and current_person_intention != in_target_port{
+				if current_person_intention != at_target_port and current_person_intention != in_target_port{
 					//write "DEBUG:" + myself.name + " - " + person_seen;
-					do remove_intention(current_person_intention , true);
-					do add_belief(going_to_port);
+					do get_to_port;
 				}				
 			}
 		}
-		
 		do remove_intention(warn_person, true);
 	}
 	
@@ -1871,16 +1874,16 @@ species LawEnforcement parent: Human{
     aspect default {
     	
 		if has_intention_op(self, predicate("patrol assigned area")) {			
-			draw circle(10) rotate: heading + 90 color: #yellow;
-			draw circle(view_dist) color: #yellow border: #black wireframe: true;
+			draw circle(5) rotate: heading + 90 color: #yellow;
+			draw circle(view_dist) color: #yellow border: #yellow wireframe: true;
 		}
 		else if has_intention_op(self, predicate("alert population")) {
-			draw triangle(10) rotate: heading + 90 color: #yellow;
+			draw triangle(5) rotate: heading + 90 color: #orange;
 			draw circle(alert_population_radius) color: rgb(1,0,0,0.3);
 		} 
     	else {
-    		draw triangle(10) rotate: heading + 90 color: color;
-    		draw circle(view_dist) color: color border: #black wireframe: true;
+    		draw triangle(5) rotate: heading + 90 color: color;
+    		draw circle(view_dist) color: color border: color wireframe: true;
     	}
     }
     
