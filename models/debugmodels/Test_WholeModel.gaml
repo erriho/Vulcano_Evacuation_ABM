@@ -222,7 +222,7 @@ global {
 		 /*
 		  * CREATING PEOPLE
 		  */
-		create People number: 2 {
+		create People number: 50 {
 			//walking_speed <- 30 #km/#h;
 			walking_speed <- rnd(3.0,6.0,0.1) #km/#h;
 			view_dist <- 30 #m;
@@ -839,11 +839,11 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 		nb_people_prepared <- length(People where (each.has_belief(predicate(each.prepared_to_evacuate))));
 		nb_people_enjoying_their_time <- length(People where (each.has_desire(predicate(each.enjoying_my_time))));
 		nb_people_making_a_decision <- length(People where (each.has_desire(predicate(each.need_evac_decision))));
-		nb_people_going_to_port <- length(People where (each.has_belief(predicate(each.going_to_port))));
-		nb_people_rescuing_others <- length(People where (each.has_belief(predicate(each.going_rescue_someone))));
-		nb_people_waiting <- length(People where (each.has_belief(predicate(each.waiting_for_someone))));
-		nb_people_going_to_safe_area <- length(People where (each.has_belief(predicate(each.going_to_safe_area))));
-		nb_people_at_port <- length(People where (each.has_belief(predicate(each.in_target_port))));
+		nb_people_going_to_port <- length(People where ((each.has_belief(predicate(each.going_to_port)) and (each.has_desire(predicate(each.at_target_port)) or each.has_desire(predicate(each.rescue_someone)) or each.has_desire(predicate(each.wait_someone)) or each.has_desire(predicate(each.at_safe_area))))));
+		nb_people_rescuing_others <- length(People where ((each.has_belief(predicate(each.going_rescue_someone))) and (each.has_belief(predicate(each.prepared_to_evacuate))) and !(each.has_belief(predicate(each.going_to_port)))));
+		nb_people_waiting <- length(People where ((each.has_belief(predicate(each.waiting_for_someone))) and (each.has_belief(predicate(each.prepared_to_evacuate))) and !(each.has_belief(predicate(each.going_to_port)))));
+		nb_people_going_to_safe_area <- length(People where ((each.has_belief(predicate(each.going_to_safe_area))) and (each.has_belief(predicate(each.prepared_to_evacuate))) and !(each.has_belief(predicate(each.going_to_port)))));
+		nb_people_at_port <- length(People where ((each.has_belief(predicate(each.in_target_port))) and !(each.has_belief(predicate(each.going_to_port)))));
 		nb_people_who_left_the_island <- length(People where (each.has_belief(predicate(each.left_the_island))));
  	} 
  	reflex monitor_emotional_status {
@@ -1368,23 +1368,24 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	predicate going_to_safe_area <- new_predicate("decided to go to nearest evacuation infrastructure");
 	predicate at_safe_area <- new_predicate("going to nearest evacuation infrastructure");
 		//RULES and ACTIONS
-		// 1) prende una prima decisione 
+		// 
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision when: self.has_desire(enjoying_my_time) and !(self.has_belief(took_evac_decision));
 	rule emotion: fearEruption remove_desire: enjoying_my_time new_desire: need_evac_decision when: self.has_desire(enjoying_my_time) and !(self.has_belief(took_evac_decision)) and (get_intensity(get_emotion(fearEruption)) >= 0.6);
-		// 2) si deve preparare
-	rule belief: one_of([going_to_port, going_rescue_someone, waiting_for_someone, going_to_safe_area]) remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: !(self.has_belief(prepared_to_evacuate));
-		// 3) deve fare ciò che ha scelto
+		//
+	rule belief: one_of([going_to_port, going_rescue_someone, waiting_for_someone, going_to_safe_area]) remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: self.has_belief(evacuation_order) and !(self.has_belief(prepared_to_evacuate));
+		// 
 	rule belief: prepared_to_evacuate remove_intention: preparing remove_desire: preparing;
 	rule belief: going_to_port new_desire: at_target_port when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(at_target_port));
 	rule belief: going_rescue_someone new_desire: rescue_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(rescue_someone));
 	rule belief: waiting_for_someone new_desire: wait_someone when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(wait_someone));
 	rule belief: going_to_safe_area new_desire: at_safe_area when: self.has_belief(prepared_to_evacuate) and !(self.has_desire(wait_someone));
 	rule belief: one_of([going_to_port, going_rescue_someone, waiting_for_someone, going_to_safe_area]) remove_intention: need_evac_decision remove_desire: need_evac_decision when: self.has_belief(prepared_to_evacuate);
-		// 4) deve poter decidere di nuovo se la decisione è scaduta se è al porto deve aspettare e basta
+		// 
 	rule new_desire: need_evac_decision remove_intention: predicate(get_predicate(get_current_intention())) remove_desire: predicate(get_predicate(get_current_intention())) remove_beliefs: [going_to_port, going_rescue_someone, waiting_for_someone, going_to_safe_area] when: !(self.has_desire(enjoying_my_time)) and !(self.has_belief(took_evac_decision)) and !(self.has_desire(in_target_port));
-	rule remove_beliefs: [going_to_port, going_to_safe_area, waiting_for_someone, going_rescue_someone] when: self.has_belief(in_target_port);
-	rule remove_beliefs: [going_to_safe_area, waiting_for_someone, going_rescue_someone] when: self.has_belief(going_to_port);
-	rule remove_desires: [at_safe_area, wait_someone, rescue_someone] when: self.has_belief(going_to_port); 
+	rule belief: in_target_port remove_beliefs: [going_to_port, going_to_safe_area, waiting_for_someone, going_rescue_someone];
+	rule belief: going_to_port remove_beliefs: [going_to_safe_area, waiting_for_someone, going_rescue_someone];
+	rule belief: going_to_port remove_desires: [at_safe_area, wait_someone, rescue_someone]; 
+		//
 	action get_to_port{
 		predicate my_current_intention <- predicate(get_predicate(get_current_intention()));
 		do remove_intention(my_current_intention, true);
@@ -1431,7 +1432,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			else {
 				chosen_plan <- rnd_choice(["port"::0.34, "rescue"::0.33, "waiting area"::0.33]);
 			}
-			// write "DEBUG: " + self.name + " acted irrationally by chosing " + chosen_plan;
+			//write "DEBUG: " + self.name + " acted irrationally by chosing " + chosen_plan;
 			if chosen_plan = "port" {do add_belief(going_to_port, 1.0, decision_lifetime);}
 			else if chosen_plan = "rescue" {do add_belief(going_rescue_someone, 1.0, decision_lifetime);}
 			else if chosen_plan = "waiting area" {do add_belief(going_to_safe_area, 1.0, decision_lifetime);}
@@ -1703,11 +1704,13 @@ species LawEnforcement parent: Human{
 	
 	rule belief: reached_patrol_area new_desire: patrol when: !(self.has_belief(evacuation_order));
 	
-	perceive target: People in: view_dist when: self.has_desire(patrol){
-		focus id: "person seen" agent_cause: self;
-		People person_seen <- self; 
-		ask myself{
-			do add_belief(new_predicate("see person", ["person"::person_seen]));
+	perceive target: People in: view_dist {
+		if ((ITalert_glob and self.has_belief(evacuation_order)) or !ITalert_glob) {
+			focus id: "person seen" agent_cause: self;
+			People person_seen <- self; 
+			ask myself{
+				do add_belief(new_predicate("see person", ["person"::person_seen]));
+			}			
 		}
 	}
 	
