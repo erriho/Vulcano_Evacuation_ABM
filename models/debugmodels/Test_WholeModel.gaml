@@ -2,7 +2,7 @@ model TestModel
 
 global {
 		//gloal variables for results
-	bool save_data <- false;
+	bool save_data <- true;
 	int save_series_every <- 15 #cycles;
 	bool should_kill_simulation <- false;
 	bool simulation_ended <- false;
@@ -152,7 +152,8 @@ global {
 			string notes <- string(simulation_event["notes"]);
 			save [event_time, event_name, notes] to: save_path format: "csv" header: true rewrite: false;	
 		}
-		do pause;
+		write "INFO: simulation has ended.";
+		//do pause;
 		simulation_ended <- true;
 		if should_kill_simulation {ask host {do die;}}
 	}
@@ -221,7 +222,7 @@ global {
 		 /*
 		  * CREATING PEOPLE
 		  */
-		create People number: 30 {
+		create People number: 2 {
 			//walking_speed <- 30 #km/#h;
 			walking_speed <- rnd(3.0,6.0,0.1) #km/#h;
 			view_dist <- 30 #m;
@@ -833,7 +834,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  		everybody_is_alerted <- true;
  	}
  	
- 	reflex monitor_evacuation_status when: issue_evacuation_order {
+ 	reflex monitor_evacuation_status {
  		nb_people_warned <- length(People where (each.has_belief(predicate(each.evacuation_order))));
 		nb_people_prepared <- length(People where (each.has_belief(predicate(each.prepared_to_evacuate))));
 		nb_people_enjoying_their_time <- length(People where (each.has_desire(predicate(each.enjoying_my_time))));
@@ -1702,7 +1703,7 @@ species LawEnforcement parent: Human{
 	
 	rule belief: reached_patrol_area new_desire: patrol when: !(self.has_belief(evacuation_order));
 	
-	perceive target: People in: view_dist {
+	perceive target: People in: view_dist when: self.has_desire(patrol){
 		focus id: "person seen" agent_cause: self;
 		People person_seen <- self; 
 		ask myself{
