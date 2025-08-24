@@ -217,7 +217,7 @@ global {
 		 /*
 		  * CREATING PEOPLE
 		  */
-		create People number: 10 {
+		create People number: 1 {
 			walking_speed <- 30 #km/#h;
 			//walking_speed <- rnd(3.0,6.0,0.1) #km/#h;
 			view_dist <- 30 #m;
@@ -1267,7 +1267,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	
 	bool want_to_board {
 		bool boarding_decision;
-		//TODO: debug it
 		//people	
 		if People contains self {
 			People me <- People(self);
@@ -1283,6 +1282,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				float perc_cf_safe <- nb_cf_safe /length(friends_I_worry_about);
 				float joy_intensity <- 0.0;
 				if has_emotion(joyPort) {joy_intensity <- get_intensity(get_emotion(joyPort));}
+				write self.name + "has: " + perc_cf_safe + "% close friends safe and has joy equal to " + joy_intensity;
 				if joy_intensity >= 0.7 {boarding_decision <- true;}
 				else if joy_intensity >= 0.3 and joy_intensity < 0.7{
 					if perc_cf_safe >= 0.5 {boarding_decision <- true;}
@@ -1294,7 +1294,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				}
 			}
 			else {
-				boarding_decision <- true;				
+				boarding_decision <- true;
 			}		
 		}
 		//LawEnforcement
@@ -1317,7 +1317,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	//EMOTIONs
 	emotion joyPort <- new_emotion("joy", in_target_port);
 
- }
+}
 /*
  * PEOPLE
  */
@@ -1345,7 +1345,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		do wander on: road_network speed: walking_speed;
 	}
 		//PREDICATES
-	//TODO: sistema questo casino
 		//decision process
 	predicate need_evac_decision <- new_predicate("need to take a decision on whether to evacuate");
 	predicate took_evac_decision <- new_predicate("took an evacuation decision");
@@ -1378,6 +1377,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		// 4) deve poter decidere di nuovo se la decisione è scaduta se è al porto deve aspettare e basta
 	rule new_desire: need_evac_decision remove_intention: predicate(get_predicate(get_current_intention())) remove_desire: predicate(get_predicate(get_current_intention())) remove_beliefs: [going_to_port, going_rescue_someone, waiting_for_someone] when: !(self.has_desire(enjoying_my_time)) and !(self.has_belief(took_evac_decision)) and !(self.has_desire(in_target_port));
 	rule remove_beliefs: [going_to_port, going_to_safe_area, waiting_for_someone, going_rescue_someone] when: self.has_belief(in_target_port);
+	rule remove_beliefs: [going_to_safe_area, waiting_for_someone, going_rescue_someone] when: self.has_belief(going_to_port); 
 	action get_to_port{
 		predicate my_current_intention <- predicate(get_predicate(get_current_intention()));
 		do remove_intention(my_current_intention, true);
@@ -1385,12 +1385,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 		//PLANS
 		//decision process
-	plan choose_whether_to_evacuate intention: need_evac_decision {
-		//TODO: va rimosso se esistente l'attuale piano? oppure ci pensa la rule (meglio)
-		//if contains(belief_base, going_to_port){do remove_belief(going_to_port);}
-		//if contains(belief_base, going_rescue_someone){do remove_belief(going_rescue_someone);}
-		//if contains(belief_base, waiting_for_someone){do remove_belief(waiting_for_someone);}
-		//if contains(belief_base, going_to_safe_area){do remove_belief(going_to_safe_area);}
+	plan choose_whether_to_evacuate intention: need_evac_decision when: !(self.has_belief(took_evac_decision)){
 		//TODO: MANCA DA FARE IL DEBUG IF THE PLAN IS CORRECTLY EXECUTED
 		//setting decision lifetime
 		int decision_lifetime;
@@ -1401,7 +1396,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			decision_lifetime <- int(max([300#s/step,1800#s/step*conscientiousness]));
 		}
 		//choosing next plan
-		if flip(0.95){
+		if flip(0){
 			//rational
 			if extroversion >= 0.8 and empty(my_communicated_statuses) {
 				do add_belief(waiting_for_someone, 1.0, -1);
@@ -1425,19 +1420,35 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			//irrational
 			string chosen_plan;
 			if empty(my_communicated_statuses){
-				chosen_plan <- rnd_choice(["port"::0.25, "rescue"::0.25, "waiting area"::0.25, "wait someone"::0.25]);
+				chosen_plan <- rnd_choice(["port"::0.0, "rescue"::0.0, "waiting area"::0.0, "wait someone"::1.0]);
+				//chosen_plan <- rnd_choice(["port"::0.25, "rescue"::0.25, "waiting area"::0.25, "wait someone"::0.25]);
 			}
 			else {
 				chosen_plan <- rnd_choice(["port"::0.34, "rescue"::0.33, "waiting area"::0.33]);
 			}
 			// write "DEBUG: " + self.name + " acted irrationally by chosing " + chosen_plan;
-			if chosen_plan = "port" {do add_belief(going_to_port, 1.0, decision_lifetime);}
-			else if chosen_plan = "rescue" {do add_belief(going_rescue_someone, 1.0, decision_lifetime);}
-			else if chosen_plan = "waiting area" {do add_belief(going_to_safe_area, 1.0, decision_lifetime);}
-			else if chosen_plan = "wait someone" {do add_belief(waiting_for_someone, 1.0, -1);}
+			if chosen_plan = "port" {do add_belief(going_to_port, 1.0, decision_lifetime);
+				write "DEBUG: " + self.name + " chose " + chosen_plan;
+			}
+			else if chosen_plan = "rescue" {do add_belief(going_rescue_someone, 1.0, decision_lifetime);
+				write "DEBUG: " + self.name + " chose " + chosen_plan;
+			}
+			else if chosen_plan = "waiting area" {do add_belief(going_to_safe_area, 1.0, decision_lifetime);
+				write "DEBUG: " + self.name + " chose " + chosen_plan;
+			}
+			else if chosen_plan = "wait someone" {do add_belief(waiting_for_someone, 1.0, -1);
+				write "DEBUG: " + self.name + " chose " + chosen_plan;
+			}
 			else {write "ERROR: Error in decision process of " + self.name;}
 		}
 		do add_belief(took_evac_decision, 1.0, decision_lifetime);
+		if has_belief(took_evac_decision){
+			write self.name + " - " + belief_base;
+		}
+	}
+	
+	reflex ciaone {
+		write name + " check - " + belief_base;
 	}
 		
 		//preparing 
@@ -1648,33 +1659,28 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		}
 	}
 	
-	//TODO: EMOTIONAL CONTAGION (non so se c'è da fare qualcosa qua, forse sì)
-	
-	//TODO: CHECK SE è INUTILE PERCHE FORSE NON AVREMO MAI IL BELIEF ERUPTION
-	float uncertaintyConversion <- 0.25;
-	perceive target:People in:view_dist{
-		if(has_belief(Eruption) and not myself.has_belief(Eruption)){
-			focus id:"Eruption" strength: uncertaintyConversion is_uncertain:true;
-//			ask myself{
-//				do add_uncertainty(predicate:fireSaw,strength: uncertaintyConversion);
-//			}
-		}
-	}		
+	//EMOTIONAL CONTAGION 	
 
 	float FearContagionThreshold <- 0.5;
-	float JoyContagionThreshold <- 0.5;
-	People perceivedOther <- nil;
+	float JoyContagionThreshold <- 0.3;
 
-	perceive target: People in:view_dist {
+	perceive target:People where each.has_emotion(fearEruption) in:view_dist {
 		emotional_contagion emotion_detected:fearEruption threshold:FearContagionThreshold;
 	}
 	
-	perceive target: People in: view_dist {
+	perceive target:People where each.has_emotion(joyPort) in: view_dist {
 		emotional_contagion emotion_detected: joyPort threshold: JoyContagionThreshold;
-		//così c'è solo il contagio emozionale ma le emozioni sono indipendenti per ora, ho contemporaneamente
-		//paura dell'eruzione e gioia di essere al porto.. per diminuire fearEruption dobbiamo fare come prima?
 	}	
 
+	/* 
+	 * //POSSIBLE EXPANSION IN THE EVENT OF IMPLEMENTING ACTUAL ERUPTIONS.
+	 * float uncertaintyConversion <- 0.25;
+	 * perceive target:People in:view_dist{
+	 * 		if(has_belief(Eruption) and not myself.has_belief(Eruption)){
+	 * 			focus id:"Eruption" strength: uncertaintyConversion is_uncertain:true;
+	 * 		}
+	 * }
+	 */
 
 	//ASPECT CUSTOMIZATION
 	aspect default {
