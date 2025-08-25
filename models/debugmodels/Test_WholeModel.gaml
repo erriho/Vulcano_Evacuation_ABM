@@ -3,7 +3,7 @@ model TestModel
 global {
 		//gloal variables for results
 	bool save_data <- true;
-	int save_series_every <- 15 #cycles;
+	int save_series_every <- 1 #cycles;
 	bool should_kill_simulation <- false;
 	bool simulation_ended <- false;
 	string saving_folder <- "../../results/" + seed + "/";
@@ -75,7 +75,7 @@ global {
 		//civil defense
 	float time_needed_to_issue_LEA_order_glob <- 0 #s; //time required by CD for LEAs to initiate civil evacuation process
 	float time_needed_to_issue_evac_order_glob <- 1200 #s; //time required by CD for issuing the evacuation alert
-	bool ITalert_glob <- true;
+	bool ITalert_glob <- false;
 	float time_needed_to_issue_ITalert_glob <- 600 #s;
 	
 	map glob_manage_LEAs_map <- [
@@ -288,6 +288,8 @@ global {
 	    			do add_belief(new_predicate("friend status", my_friend_status));	    			
 	    		}
     		}
+    		person.friends_I_worry_about <- list<People>((person.social_link_base where (each.liking > 0.5)) collect each.agent);
+    		person.nb_friends_I_worry_about <- length(person.friends_I_worry_about);
     	}
 		 /*
 		  * CREATING LAW ENFORCEMENT AGENTS
@@ -493,7 +495,7 @@ species EvacuationInfrastructure {
 					if !(last(self.my_communicated_statuses) = "on board") {
 						do add_subintention(get_current_intention(), communicate_status, true);		
 						do current_intention_on_hold();							
-			}
+					}
 				}
 				if People contains person {
 					nb_people_on_board <- nb_people_on_board +1;
@@ -838,12 +840,13 @@ species Waiting_Areas parent: EvacuationInfrastructure {
  		nb_people_warned <- length(People where (each.has_belief(predicate(each.evacuation_order))));
 		nb_people_prepared <- length(People where (each.has_belief(predicate(each.prepared_to_evacuate))));
 		nb_people_enjoying_their_time <- length(People where (each.has_desire(predicate(each.enjoying_my_time))));
-		nb_people_making_a_decision <- length(People where (each.has_desire(predicate(each.need_evac_decision))));
+		//nb_people_making_a_decision <- length(People where (each.has_desire(predicate(each.need_evac_decision))));
+		nb_people_making_a_decision <- length(People where (predicate(get_predicate(each.get_current_intention()))= predicate(each.need_evac_decision)));
 		nb_people_going_to_port <- length(People where ((each.has_belief(predicate(each.going_to_port)) and (each.has_desire(predicate(each.at_target_port)) or each.has_desire(predicate(each.rescue_someone)) or each.has_desire(predicate(each.wait_someone)) or each.has_desire(predicate(each.at_safe_area))))));
 		nb_people_rescuing_others <- length(People where ((each.has_belief(predicate(each.going_rescue_someone))) and (each.has_belief(predicate(each.prepared_to_evacuate))) and !(each.has_belief(predicate(each.going_to_port)))));
 		nb_people_waiting <- length(People where ((each.has_belief(predicate(each.waiting_for_someone))) and (each.has_belief(predicate(each.prepared_to_evacuate))) and !(each.has_belief(predicate(each.going_to_port)))));
 		nb_people_going_to_safe_area <- length(People where ((each.has_belief(predicate(each.going_to_safe_area))) and (each.has_belief(predicate(each.prepared_to_evacuate))) and !(each.has_belief(predicate(each.going_to_port)))));
-		nb_people_at_port <- length(People where ((each.has_belief(predicate(each.in_target_port))) and !(each.has_belief(predicate(each.going_to_port)))));
+		nb_people_at_port <- length(People where ((each.has_belief(predicate(each.in_target_port))) and !(each.has_belief(predicate(each.going_to_port))) and !(each.has_belief(predicate(each.left_the_island)))));
 		nb_people_who_left_the_island <- length(People where (each.has_belief(predicate(each.left_the_island))));
  	} 
  	reflex monitor_emotional_status {
@@ -937,6 +940,7 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 			 		ferries_ready_to_go >- selected_ferry;
 			 		people_still_waiting <- people_still_waiting - selected_ferry.capacity;	
 			 		//write "DEBUG: " + string(time) + " - " + people_still_waiting;
+			 		//write "DEBUG: Told " + selected_ferry.name + " to go to " + port.name;
 			 		port.people_with_no_assigned_vehicle <- people_still_waiting; 			
 	 			}
 	 			if people_still_waiting <= 0 {
@@ -948,12 +952,35 @@ species Waiting_Areas parent: EvacuationInfrastructure {
 			}
 		}
 		else {
+			list<Ferry> ferries_already_at_target_location;
 			loop ferry over: ferries_ready_to_go {
-				ask ferry {
-		 			self.target_infrastructure_agent <- hub;
-		 			self.target_destination <- hub.location;
-				}	
+				if ferry.location != ferry.target_infrastructure_agent.location or ferry.target_infrastructure_agent.name = ferry.hub.name {
+					ask ferry {
+			 			self.target_infrastructure_agent <- hub;
+			 			self.target_destination <- hub.location;
+					}						
+				}
+				else {
+					if ferry.waited_for_too_long {
+						Port port <- Port(ferry.target_infrastructure_agent);
+						ask port {occupied_evacuation_spots <- occupied_evacuation_spots - 1;}
+						ask ferry {
+				 			self.target_infrastructure_agent <- hub;
+				 			self.target_destination <- hub.location;
+						}						
+					}
+					else {						
+				 		ferries_already_at_target_location <+ ferry;
+						Port port <- Port(ferry.target_infrastructure_agent);
+						int people_still_waiting <- port.people_with_no_assigned_vehicle;
+						ask ferry {free_to_go <- true;}
+						ask port {occupied_evacuation_spots <- occupied_evacuation_spots + 1;}
+				 		people_still_waiting <- people_still_waiting - ferry.capacity;
+				 		port.people_with_no_assigned_vehicle <- people_still_waiting;		
+					}
+				}
 			}
+			loop ferry over: ferries_already_at_target_location {ferries_ready_to_go >- ferry;}
 		}
  	}
  	
@@ -1271,12 +1298,19 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		} 
 	} 
 	
+	list<People> friends_I_worry_about; 
+	int nb_friends_I_worry_about; //it is the length of previous list at the beginning of simulation run (the list gets shrinked as people leave the simulation from Milazzo)
 	bool want_to_board {
 		bool boarding_decision;
 		//people	
 		if People contains self {
 			People me <- People(self);
-			list<People> friends_I_worry_about <- list<People>((self.social_link_base where (each.liking > 0.5)) collect each.agent);
+			list<People> fully_evacuated_friends;
+			loop close_friend over: friends_I_worry_about {
+				//This loop is to prevent insurgence of errors in the next block
+				if dead(close_friend){fully_evacuated_friends <+ close_friend;}
+			}
+			friends_I_worry_about <- friends_I_worry_about - fully_evacuated_friends;
 			if !empty(friends_I_worry_about) {
 				list<predicate> my_friend_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
 				list<predicate> my_close_friends_statuses <- [];
@@ -1285,10 +1319,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 					my_close_friends_statuses <+ close_friend_status; 
 				}			
 				int nb_cf_safe <- my_close_friends_statuses count (each.values["status"] = 'at port' or each.values["status"] = 'on board');
-				float perc_cf_safe <- nb_cf_safe /length(friends_I_worry_about);
+				float perc_cf_safe <- (nb_cf_safe + (nb_friends_I_worry_about - length(friends_I_worry_about))) / nb_friends_I_worry_about;
 				float joy_intensity <- 0.0;
 				if has_emotion(joyPort) {joy_intensity <- get_intensity(get_emotion(joyPort));}
-				//write "DEBUG: " + self.name + "has: " + perc_cf_safe + "% close friends safe and has joy equal to " + joy_intensity;
+				//write "DEBUG: " + self.name + " has: " + perc_cf_safe*100 + "% close friends safe and has joy equal to " + joy_intensity;
+				//write "DEBUG: " + self.name + " has: " + (nb_friends_I_worry_about - length(friends_I_worry_about)) + " close friends fully evacuated.";
 				if joy_intensity >= 0.7 {boarding_decision <- true;}
 				else if joy_intensity >= 0.3 and joy_intensity < 0.7{
 					if perc_cf_safe >= 0.5 {boarding_decision <- true;}
@@ -1311,10 +1346,6 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 	}
 	
 	reflex on_board when: boarded = true { 
-		if People contains self and !(last(self.my_communicated_statuses) = "on board"){
-			do add_subintention(get_current_intention(), communicate_status, true);		
-			do current_intention_on_hold();							
-		}
 		//speed <- boarded_vehicle.speed; 
 		//location <- boarded_vehicle.location; 
 		do goto target: boarded_vehicle.location speed: boarded_vehicle.speed on:ferry_network; //computes much faster
@@ -1370,7 +1401,21 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		//RULES and ACTIONS
 		// 
 	rule belief: evacuation_order remove_desire: enjoying_my_time new_desire: need_evac_decision when: self.has_desire(enjoying_my_time) and !(self.has_belief(took_evac_decision));
-	rule emotion: fearEruption remove_desire: enjoying_my_time new_desire: need_evac_decision when: self.has_desire(enjoying_my_time) and !(self.has_belief(took_evac_decision)) and (get_intensity(get_emotion(fearEruption)) >= 0.6);
+	bool I_am_scared <- false;
+	reflex check_my_fear_level when: has_emotion(fearEruption) {
+		//this reflex was introduces as the commented out rule didn't seem to behave as intended
+		//TODO: fai il debugging di questa
+		if get_intensity(get_emotion(fearEruption)) >= 0.6 and I_am_scared = false {
+			write self.name + ": I am scared";
+			I_am_scared <- true;				
+		}
+		else if get_intensity(get_emotion(fearEruption)) < 0.6 and I_am_scared = true {
+			write self.name + ": I am not scared anymore";
+			I_am_scared <- false;
+		}
+	}
+	rule emotion: fearEruption remove_desire: enjoying_my_time new_desire: need_evac_decision when: self.has_desire(enjoying_my_time) and !(self.has_belief(took_evac_decision)) and I_am_scared;
+	//rule emotion: fearEruption remove_desire: enjoying_my_time new_desire: need_evac_decision when: self.has_desire(enjoying_my_time) and !(self.has_belief(took_evac_decision)) and (get_intensity(get_emotion(fearEruption)) >= 0.6);
 		//
 	rule belief: one_of([going_to_port, going_rescue_someone, waiting_for_someone, going_to_safe_area]) remove_intention: need_evac_decision remove_desire: need_evac_decision new_desire: preparing when: self.has_belief(evacuation_order) and !(self.has_belief(prepared_to_evacuate));
 		// 
@@ -1383,6 +1428,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		// 
 	rule new_desire: need_evac_decision remove_intention: predicate(get_predicate(get_current_intention())) remove_desire: predicate(get_predicate(get_current_intention())) remove_beliefs: [going_to_port, going_rescue_someone, waiting_for_someone, going_to_safe_area] when: !(self.has_desire(enjoying_my_time)) and !(self.has_belief(took_evac_decision)) and !(self.has_desire(in_target_port));
 	rule belief: in_target_port remove_beliefs: [going_to_port, going_to_safe_area, waiting_for_someone, going_rescue_someone];
+	rule belief: left_the_island remove_belief: in_target_port;
 	rule belief: going_to_port remove_beliefs: [going_to_safe_area, waiting_for_someone, going_rescue_someone];
 	rule belief: going_to_port remove_desires: [at_safe_area, wait_someone, rescue_someone]; 
 		//
@@ -1475,15 +1521,19 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		list<string> help_statuses <- ["unknown", "waiting"];
 		list<People> friends_that_might_need_help;
 		list<predicate> my_friends_statuses <- get_beliefs_with_name("friend status") collect (predicate(get_predicate(mental_state (each))));
+		list<People> fully_evacuated_friends;
+		loop friend over: my_friends {
+			//This loop is to prevent insurgence of errors in the next block (accessing dead agents attributes)
+			if dead(friend){fully_evacuated_friends <+ friend;}
+		}
+		my_friends <- my_friends - fully_evacuated_friends;
 		loop fr_stat over: my_friends_statuses {
 			if help_statuses contains fr_stat.values["status"] {
 				friends_that_might_need_help <+ my_friends first_with(each.name = fr_stat.values["name"]);
 			}
 		}
 		if !empty(attempted_rescue_friends) {
-			loop friend over: friends_that_might_need_help {
-				if attempted_rescue_friends contains friend {friends_that_might_need_help >- friend;}
-			}
+			friends_that_might_need_help <- friends_that_might_need_help - attempted_rescue_friends;
 		}
 		if !empty(friends_that_might_need_help) {
 			list<social_link> friends_that_need_help_links <- self.social_link_base where (friends_that_might_need_help contains each.agent);
@@ -1506,7 +1556,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			point friend_location <- (my_friends_statuses first_with ((each).values["name"] = friend_to_rescue.name)).values["location"];
 			if self.location != friend_location {
 				do goto target: friend_location on: road_network speed: walking_speed*1.5;
-				//write "DEBUG: " + self.name + " reaching friend.";
+				//write "DEBUG: " + self.name + " reaching friend " + friend_to_rescue.name;
 			}
 			else{
 				if self distance_to(friend_to_rescue) < 10 #m {
@@ -1538,15 +1588,23 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 				}		
 				else{
 					attempted_rescue_friends <+ friend_to_rescue;
-					//write "DEBUG: " + self.name + " friend was not there.";
+					//write "DEBUG: " + self.name + ": friend " + friend_to_rescue.name + " was not there.";
+					if self distance_to(friend_to_rescue) < 150 #m and !(friend_to_rescue.has_belief(friend_is_here)){
+						ask friend_to_rescue {
+							do add_belief(new_predicate("my friend is here", ["person"::myself])); 
+						}
+					}
+					friend_to_rescue <- nil;
 					do get_to_port;
 					//can be expanded to emotions (e.g. fear of my friend not being safe)
 				}
 			}
-			if self distance_to(friend_to_rescue) < 150 #m and !(friend_to_rescue.has_belief(friend_is_here)){
-				ask friend_to_rescue {
-					do add_belief(new_predicate("my friend is here", ["person"::myself])); 
-				}
+			if friend_to_rescue != nil {
+				if self distance_to(friend_to_rescue) < 150 #m and !(friend_to_rescue.has_belief(friend_is_here)){
+					ask friend_to_rescue {
+						do add_belief(new_predicate("my friend is here", ["person"::myself])); 
+					}
+				}				
 			}
 		}
 		else if friend_to_rescue != nil and (dead(friend_to_rescue)) {
@@ -1927,7 +1985,7 @@ species EvacuationVehicle skills: [moving] {
 			waiting_time <- 0.0 #s;
 			waited_for_too_long <- true;
 			ask target_infrastructure_agent {
-				self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;
+				self.occupied_evacuation_spots <- self.occupied_evacuation_spots - 1;
 				self.people_with_no_assigned_vehicle <- self.people_with_no_assigned_vehicle + myself.capacity - myself.people_on_board;
 			}
 		}
@@ -1946,7 +2004,7 @@ species EvacuationVehicle skills: [moving] {
 			waiting_people_to_board <- false;
 			waiting_time <- 0.0 #s;
 			ask target_infrastructure_agent {
-				self.occupied_evacuation_spots <- self.occupied_evacuation_spots -1;
+				self.occupied_evacuation_spots <- self.occupied_evacuation_spots - 1;
 				self.people_with_no_assigned_vehicle <- self.people_with_no_assigned_vehicle + myself.capacity - myself.people_on_board;
 			}
 		}	
@@ -1979,12 +2037,13 @@ species Ferry parent: EvacuationVehicle {
 				}
 				else {
 					if should_unboard = false {should_unboard <- true;}
+					if waited_for_too_long {waited_for_too_long <- false;}
 				}
 			}
 			else if people_on_board = 0 and ready_to_evacuate = false {
 				if safe = true and waited_for_too_long = false{
-					ready_to_evacuate <- true;
 					free_to_go <- false;
+					ready_to_evacuate <- true;
 				}
 				else if safe = false and waited_for_too_long = false{
 					do goto target: hub_location speed: cruising_speed on: ferry_network;
@@ -1993,9 +2052,7 @@ species Ferry parent: EvacuationVehicle {
 					do goto target: hub_location speed: cruising_speed on: ferry_network;
 					free_info_transmitted <- false;
 					ready_to_evacuate <- true;
-					if location = hub_location {
-					}
-					
+					if location = hub_location {waited_for_too_long <- false;}
 				}
 			}
 			else if people_on_board >= 0 and ready_to_evacuate = true {
@@ -2011,13 +2068,14 @@ species Ferry parent: EvacuationVehicle {
 				if location != target_destination and target_destination != hub_location {
 					if location = hub_location {speed<-cruising_speed;}
 					do goto target: target_destination speed: speed on: ferry_network;
+					//write "DEBUG: " + self.name + " going to " + target_infrastructure_agent.name;
 					if location distance_to target_destination < approach_distance and free_to_go = false {
 						//ask port whether it is free or not
 						speed <- 0.0;
 						ask target_infrastructure_agent {
 							if self.full = false {
 								myself.free_to_go <- true;
-								self.occupied_evacuation_spots <- self.occupied_evacuation_spots +1;
+								self.occupied_evacuation_spots <- self.occupied_evacuation_spots + 1;
 							}
 							else if self.full = true {/*do nothing*/}
 						}
@@ -2028,8 +2086,8 @@ species Ferry parent: EvacuationVehicle {
 					}
 				}
 				else if location = target_destination and target_destination != hub_location {
-					should_board <- true;
 					speed <- 0.0;
+					should_board <- true;
 				}
 				else if target_destination = hub_location {
 					/*wait for PC to tell where to go, in the meanwhile go to hub*/
@@ -2179,7 +2237,8 @@ species Helicopter parent: EvacuationVehicle {
 	}
 }
 
-experiment "show simulation" type: gui {     
+experiment "show simulation" type: gui { 
+	float seed <- 0.4;    
     output {
 	    display vulcano_map type: 3d{
 	       species Island refresh: false;
@@ -2268,7 +2327,7 @@ experiment "show simulation_with_charts" type: gui {
 
 
 experiment multiple_runs type:batch until:simulation_ended repeat:1 parallel:true{
-	parameter "nb groups" var:seed min:1.0 max:42.0;
+	parameter "nb groups" var:seed min:0.0 max:2.0;
 	method exploration;
 }
 
