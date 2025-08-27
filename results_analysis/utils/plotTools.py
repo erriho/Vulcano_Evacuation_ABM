@@ -22,3 +22,32 @@ def darken_color(color, factor=0.8):
     rgb = mcolors.to_rgb(color)
     darkened_rgb = [c * factor for c in rgb]
     return darkened_rgb
+
+def format_time(t, time_step_duration = 1, format = "hh:mm"):
+    t = t*time_step_duration
+    hours = int(t // 3600)
+    minutes = int((t % 3600) // 60)
+    if format == "hh:mm":
+        return f'{hours:02d}:{minutes:02d}'
+    elif format == "hh mm":
+        return f'{hours:02d}h {minutes:02d}m'
+    elif format == r"hh\nmm":
+        return f'{hours:02d}h\n{minutes:02d}m'
+    else:
+        if format == "default":
+            return t
+        else:
+            raise TypeError(r"Allowed values for format are 'default', 'hh:mm', 'hh mm' and 'hh\nmm'")
+
+def format_time_label(ax, fontsize = 12, format = "hh:mm"):
+    if format == "hh:mm":
+        return ax.set_xlabel('Time (h:min)', fontsize=fontsize)
+    elif format == "hh mm":
+        return ax.set_xlabel('Time', fontsize=fontsize)
+    elif format == r"hh\nmm":
+        return ax.set_xlabel('Time', fontsize=fontsize)
+    else:
+        if format == "default":
+            return ax.set_xlabel('Time', fontsize=fontsize)
+        else:
+            raise TypeError(r"Allowed values for format are 'default', 'hh:mm', 'hh mm' and 'hh\nmm'")
