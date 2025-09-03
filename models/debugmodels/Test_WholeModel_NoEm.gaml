@@ -222,7 +222,7 @@ global {
 		 /*
 		  * CREATING PEOPLE
 		  */
-		create People number: 50 {
+		create People number: 500 {
 			//walking_speed <- 30 #km/#h;
 			walking_speed <- rnd(3.0,6.0,0.1) #km/#h;
 			view_dist <- 30 #m;
@@ -259,20 +259,20 @@ global {
 	    				ask person {
 	    					social_link sl <- new_social_link(my_friend);
 	    					do add_social_link(sl);
-	    					sl <- set_liking(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
-	    					sl <- set_dominance(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1)); 
-	    					sl <- set_solidarity(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
-	    					sl <- set_familiarity(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1)); 
-	    					sl <- set_trust(get_social_link(new_social_link(my_friend)),rnd(0.0,1.0,0.1));
+	    					sl <- set_liking(get_social_link(new_social_link(my_friend)),0.0);
+	    					sl <- set_dominance(get_social_link(new_social_link(my_friend)),0.0); 
+	    					sl <- set_solidarity(get_social_link(new_social_link(my_friend)),0.0);
+	    					sl <- set_familiarity(get_social_link(new_social_link(my_friend)),0.0); 
+	    					sl <- set_trust(get_social_link(new_social_link(my_friend)),0.0);
 	    				}
 	    				ask my_friend{
 	    					social_link sl <- new_social_link(person);
 	    					do add_social_link(sl);
-	    					sl <- set_liking(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
-	    					sl <- set_dominance(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1)); 
-	    					sl <- set_solidarity(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
-	    					sl <- set_familiarity(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1)); 
-	    					sl <- set_trust(get_social_link(new_social_link(person)),rnd(0.0,1.0,0.1));
+	    					sl <- set_liking(get_social_link(new_social_link(person)),0.0);
+	    					sl <- set_dominance(get_social_link(new_social_link(person)),0.0); 
+	    					sl <- set_solidarity(get_social_link(new_social_link(person)),0.0);
+	    					sl <- set_familiarity(get_social_link(new_social_link(person)),0.0); 
+	    					sl <- set_trust(get_social_link(new_social_link(person)),0.0);
 	    				}
     				}
     			}
@@ -1239,9 +1239,9 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
  */
  species Human skills: [moving] control: simple_bdi{
 	init {
-		use_emotions_architecture <- true; 
-		use_social_architecture <- true;	
-		use_personality <- true;	
+		use_emotions_architecture <- false; 
+		use_social_architecture <- false;	
+		use_personality <- false;	
 	}
 	//enviornment-related variables
 	float view_dist <- 30 #m;
@@ -1368,11 +1368,11 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 		do add_desire(enjoying_my_time);
 		do add_desire(noEruption, 1.0);
 		
-		openness <- /*1.0;*/gauss(0.5,0.12);	
-		conscientiousness <- /*1.0;*/gauss(0.5,0.12); 
-		extroversion <- /*1.0;*/gauss(0.5,0.12);
-		agreeableness <- /*1.0;*/gauss(0.5,0.12);
-		neurotism <- /*1.0;*/gauss(0.5,0.12);
+		openness <- 0.0;	
+		conscientiousness <- 0.5; 
+		extroversion <- 0.0;
+		agreeableness <- 0.0;
+		neurotism <- 0.0;
 	}
 	
 	//MOVEMENT and EVACUATION
@@ -1435,7 +1435,7 @@ species RoaringSoundEmission parent: EruptivePhenomenon {
 			decision_lifetime <- int(max([300#s/step,1800#s/step*conscientiousness]));
 		}
 		//choosing next plan
-		if flip(0.95){
+		if flip(1.0){
 			//rational
 			if extroversion >= 0.8 and empty(my_communicated_statuses) {
 				do add_belief(waiting_for_someone, 1.0, -1);

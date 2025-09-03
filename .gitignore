@@ -3,6 +3,7 @@ orig_data/
 
 #ignore results folder
 results/
+plots/
 
 #ignore file saved during debugging
 models/debugmodels/exports

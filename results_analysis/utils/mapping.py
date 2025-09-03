@@ -41,3 +41,9 @@ SERIES_NAME_MAPPING_2 = {
     'nb_fearful_people': 'Fearful People',
     'nb_alright_people': 'Alright People'
 }
+
+EXPERIMENT_NAME_PLOT_MAPPING = {
+    'ITAlert_Emotions': 'ITAlert Evacuation\nEmotions Enabled',
+    'ITAlert_No_Emotions': 'ITAlert Evacuation\nEmotions Disabled',
+    'No_ITAlert_Emotions': 'Door-to-door Evacuaiton\nEmotions Enabled',
+}
