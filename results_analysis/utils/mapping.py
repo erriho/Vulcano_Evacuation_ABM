@@ -47,3 +47,9 @@ EXPERIMENT_NAME_PLOT_MAPPING = {
     'ITAlert_No_Emotions': 'ITAlert Evacuation\nEmotions Disabled',
     'No_ITAlert_Emotions': 'Door-to-door Evacuaiton\nEmotions Enabled',
 }
+
+EXPERIMENT_NAME_PLOT_MAPPING_2 = {
+    'ITAlert_Emotions': 'IT-Alert Evacuation - Emotions Enabled',
+    'ITAlert_No_Emotions': 'IT-Alert Evacuation - Emotions Disabled',
+    'No_ITAlert_Emotions': 'Door-to-door Evacuaiton - Emotions Enabled',
+}
