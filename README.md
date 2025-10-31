@@ -2,7 +2,7 @@
 ## An Agent-Based Model Applying the BEN Architecture  
 
 **Authors:** Enrico Sansone, Irene Silvestro, Ilaria Vetrano  
-**Course:** Econophysics and MAS Laboratory  - Università degli Studi di Torino (Italy)
+**Course:** Econophysics and MAS Laboratory - Università degli Studi di Torino (Italy)  
 **Exam Date:** September 2025 – Academic Year 2024/25  
 
 
