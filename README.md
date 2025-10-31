@@ -1,5 +1,4 @@
-# Simulating a Volcanic Island Evacuation with Emotions and Social Structure:  
-## An Agent-Based Model Applying the BEN Architecture  
+# Simulating a Volcanic Island Evacuation with Emotions and Social Structure: _An Agent-Based Model Applying the BEN Architecture_  
 
 **Authors:** Enrico Sansone, Irene Silvestro, Ilaria Vetrano  
 **Course:** Econophysics and MAS Laboratory - Università degli Studi di Torino (Italy)  
